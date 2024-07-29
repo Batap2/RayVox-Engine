@@ -20,12 +20,14 @@ using namespace Microsoft::WRL;
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 
 #include "AssertUtils.h"
+#include "CommandQueue.h"
 
 struct DX12Context{
     // The number of swap chain back buffers.
-    static const uint8_t g_NumFrames = 3;
+    static const uint8_t bufferCount = 3;
     // Use WARP adapter
     bool g_UseWarp = false;
 
@@ -38,20 +40,16 @@ struct DX12Context{
 
     // DirectX 12 Objects
     ComPtr<ID3D12Device2> g_Device;
-    ComPtr<ID3D12CommandQueue> g_CommandQueue;
     ComPtr<IDXGISwapChain4> g_SwapChain;
-    ComPtr<ID3D12Resource> g_BackBuffers[g_NumFrames];
-    ComPtr<ID3D12GraphicsCommandList> g_CommandList;
-    ComPtr<ID3D12CommandAllocator> g_CommandAllocators[g_NumFrames];
+    ComPtr<ID3D12Resource> g_BackBuffers[bufferCount];
     ComPtr<ID3D12DescriptorHeap> g_RTVDescriptorHeap; // array of rtv for the backbuffers of the swapchain
     UINT g_RTVDescriptorSize;
-    UINT g_CurrentBackBufferIndex;
+    UINT currentBackBufferIndex;
 
-    // Synchronization objects
-    ComPtr<ID3D12Fence> g_Fence;
-    uint64_t g_FenceValue = 0;
-    uint64_t g_FrameFenceValues[g_NumFrames] = {};
-    HANDLE g_FenceEvent;
+    uint64_t m_FenceValues[bufferCount] = {};
+
+    std::shared_ptr<CommandQueue> m_DirectCommandQueue, m_ComputeCommandQueue, m_CopyCommandQueue;
+
 
     void EnableDebugLayer();
 
@@ -64,7 +62,7 @@ struct DX12Context{
     bool CheckTearingSupport();
 
     ComPtr<IDXGISwapChain4> CreateSwapChain(HWND hWnd,
-                                            ComPtr<ID3D12CommandQueue> &commandQueue,
+                                            std::shared_ptr<CommandQueue> &commandQueue,
                                             uint32_t width, uint32_t height, uint32_t bufferCount);
 
     ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(ComPtr<ID3D12Device2> &device,
@@ -75,23 +73,15 @@ struct DX12Context{
                                  ComPtr<IDXGISwapChain4> &swapChain,
                                  ComPtr<ID3D12DescriptorHeap> &descriptorHeap);
 
-    ComPtr<ID3D12CommandAllocator> CreateCommandAllocator(ComPtr<ID3D12Device2> &device,
-                                                          D3D12_COMMAND_LIST_TYPE type);
 
-    ComPtr<ID3D12GraphicsCommandList> CreateCommandList(ComPtr<ID3D12Device2> &device,
-                                                        ComPtr<ID3D12CommandAllocator> &commandAllocator,
-                                                        D3D12_COMMAND_LIST_TYPE type);
 
     ComPtr<ID3D12Fence> CreateFence(ComPtr<ID3D12Device2> &device);
 
     HANDLE CreateEventHandle();
 
-    uint64_t Signal(ComPtr<ID3D12CommandQueue> &commandQueue,
-                    ComPtr<ID3D12Fence> &fence,
-                    uint64_t& fenceValue);
-
-    void WaitForFenceValue(ComPtr<ID3D12Fence> &fence, uint64_t fenceValue, HANDLE fenceEvent,
-                           std::chrono::milliseconds duration = std::chrono::milliseconds::max());
+    void transitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList2> &commandList,
+                            Microsoft::WRL::ComPtr<ID3D12Resource> &resource,
+                            D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState);
 
     void Render();
 

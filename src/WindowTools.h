@@ -24,6 +24,8 @@ namespace WindowTools
 
     inline DX12Context dx_ctx;
 
+    void RedirectIOToConsole();
+
     HWND createWindow(const wchar_t* windowClassName, HINSTANCE hInst,
                       const wchar_t* windowTitle, uint32_t width, uint32_t height);
 
@@ -37,5 +39,5 @@ namespace WindowTools
 
     void RegisterWindowClass( HINSTANCE hInst, const wchar_t* windowClassName );
 
-    void InitWindow(HINSTANCE hInstance);
+    void InitApp(HINSTANCE hInstance);
 }

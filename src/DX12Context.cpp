@@ -156,7 +156,7 @@ bool DX12Context::CheckTearingSupport()
 }
 
 ComPtr<IDXGISwapChain4> DX12Context::CreateSwapChain(HWND hWnd,
-                                        ComPtr<ID3D12CommandQueue> &commandQueue,
+                                        std::shared_ptr<CommandQueue> &commandQueue,
                                         uint32_t width, uint32_t height, uint32_t bufferCount )
 {
     ComPtr<IDXGISwapChain4> dxgiSwapChain4;
@@ -182,7 +182,7 @@ ComPtr<IDXGISwapChain4> DX12Context::CreateSwapChain(HWND hWnd,
     swapChainDesc.Flags = CheckTearingSupport() ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
     ComPtr<IDXGISwapChain1> swapChain1;
     ThrowIfFailed(dxgiFactory4->CreateSwapChainForHwnd(
-            commandQueue.Get(),
+            commandQueue->GetD3D12CommandQueue().Get(),
             hWnd,
             &swapChainDesc,
             nullptr,
@@ -219,7 +219,7 @@ void DX12Context::UpdateRenderTargetViews(ComPtr<ID3D12Device2> &device,
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(descriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-    for (int i = 0; i < g_NumFrames; ++i)
+    for (int i = 0; i < bufferCount; ++i)
     {
         ComPtr<ID3D12Resource> backBuffer;
         ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer)));
@@ -230,26 +230,6 @@ void DX12Context::UpdateRenderTargetViews(ComPtr<ID3D12Device2> &device,
 
         rtvHandle.Offset(rtvDescriptorSize);
     }
-}
-
-ComPtr<ID3D12CommandAllocator> DX12Context::CreateCommandAllocator(ComPtr<ID3D12Device2> &device,
-                                                      D3D12_COMMAND_LIST_TYPE type)
-{
-    ComPtr<ID3D12CommandAllocator> commandAllocator;
-    ThrowIfFailed(device->CreateCommandAllocator(type, IID_PPV_ARGS(&commandAllocator)));
-
-    return commandAllocator;
-}
-
-ComPtr<ID3D12GraphicsCommandList> DX12Context::CreateCommandList(ComPtr<ID3D12Device2> &device,
-                                                    ComPtr<ID3D12CommandAllocator> &commandAllocator, D3D12_COMMAND_LIST_TYPE type)
-{
-    ComPtr<ID3D12GraphicsCommandList> commandList;
-    ThrowIfFailed(device->CreateCommandList(0, type, commandAllocator.Get(), nullptr, IID_PPV_ARGS(&commandList)));
-
-    ThrowIfFailed(commandList->Close());
-
-    return commandList;
 }
 
 ComPtr<ID3D12Fence> DX12Context::CreateFence(ComPtr<ID3D12Device2> &device)
@@ -271,73 +251,45 @@ HANDLE DX12Context::CreateEventHandle()
     return fenceEvent;
 }
 
-uint64_t DX12Context::Signal(ComPtr<ID3D12CommandQueue> &commandQueue, ComPtr<ID3D12Fence> &fence,
-                uint64_t& fenceValue)
+void DX12Context::transitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList2> &commandList,
+                        Microsoft::WRL::ComPtr<ID3D12Resource> &resource,
+                        D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState)
 {
-    uint64_t fenceValueForSignal = ++fenceValue;
-    ThrowIfFailed(commandQueue->Signal(fence.Get(), fenceValueForSignal));
+    CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            resource.Get(),
+            beforeState, afterState);
 
-    return fenceValueForSignal;
-}
-
-void DX12Context::WaitForFenceValue(ComPtr<ID3D12Fence> &fence, uint64_t fenceValue, HANDLE fenceEvent,
-                       std::chrono::milliseconds duration)
-{
-    if (fence->GetCompletedValue() < fenceValue)
-    {
-        ThrowIfFailed(fence->SetEventOnCompletion(fenceValue, fenceEvent));
-        ::WaitForSingleObject(fenceEvent, static_cast<DWORD>(duration.count()));
-    }
+    commandList->ResourceBarrier(1, &barrier);
 }
 
 void DX12Context::Render()
 {
-    auto commandAllocator = g_CommandAllocators[g_CurrentBackBufferIndex];
-    auto backBuffer = g_BackBuffers[g_CurrentBackBufferIndex];
+    auto commandList = m_DirectCommandQueue->GetCommandList();
+    auto backBuffer = g_BackBuffers[currentBackBufferIndex];
 
-    commandAllocator->Reset();
-    g_CommandList->Reset(commandAllocator.Get(), nullptr);
     // Clear the render target.
     {
-        CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                backBuffer.Get(),
-                D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        transitionResource(commandList, backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-        g_CommandList->ResourceBarrier(1, &barrier);
         FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-                                          g_CurrentBackBufferIndex, g_RTVDescriptorSize);
+                                          currentBackBufferIndex, g_RTVDescriptorSize);
 
-        g_CommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+        commandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
     }
     // Present
     {
-        CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                backBuffer.Get(),
-                D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-        g_CommandList->ResourceBarrier(1, &barrier);
-        ThrowIfFailed(g_CommandList->Close());
+        transitionResource(commandList, backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-        ID3D12CommandList* const commandLists[] = {
-                g_CommandList.Get()
-        };
-        g_CommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+        m_FenceValues[currentBackBufferIndex] = m_DirectCommandQueue->ExecuteCommandList(commandList);
+
         UINT syncInterval = g_VSync ? 1 : 0;
         UINT presentFlags = g_TearingSupported && !g_VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
         ThrowIfFailed(g_SwapChain->Present(syncInterval, presentFlags));
+        currentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
 
-        g_FrameFenceValues[g_CurrentBackBufferIndex] = Signal(g_CommandQueue, g_Fence, g_FenceValue);
-        g_CurrentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
-
-        WaitForFenceValue(g_Fence, g_FrameFenceValues[g_CurrentBackBufferIndex], g_FenceEvent);
+        m_DirectCommandQueue->WaitForFenceValue(m_FenceValues[currentBackBufferIndex]);
     }
-}
-
-void DX12Context::Flush(ComPtr<ID3D12CommandQueue> &commandQueue, ComPtr<ID3D12Fence> &fence,
-           uint64_t& fenceValue, HANDLE fenceEvent )
-{
-    uint64_t fenceValueForSignal = Signal(commandQueue, fence, fenceValue);
-    WaitForFenceValue(fence, fenceValueForSignal, fenceEvent);
 }
 
 void DX12Context::InitContext(HWND hWnd, uint32_t clientWidth, uint32_t clientHeight)
@@ -353,27 +305,20 @@ void DX12Context::InitContext(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
 
     g_Device = CreateDevice(dxgiAdapter4);
 
-    g_CommandQueue = CreateCommandQueue(g_Device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+    m_DirectCommandQueue = std::make_shared<CommandQueue>(g_Device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+    m_ComputeCommandQueue = std::make_shared<CommandQueue>(g_Device, D3D12_COMMAND_LIST_TYPE_COMPUTE);
+    m_CopyCommandQueue = std::make_shared<CommandQueue>(g_Device, D3D12_COMMAND_LIST_TYPE_COPY);
 
-    g_SwapChain = CreateSwapChain(hWnd, g_CommandQueue,
-                                  clientWidth, clientHeight, g_NumFrames);
+    g_SwapChain = CreateSwapChain(hWnd, m_DirectCommandQueue,
+                                  clientWidth, clientHeight, bufferCount);
 
-    g_CurrentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
+    currentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
 
-    g_RTVDescriptorHeap = CreateDescriptorHeap(g_Device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, g_NumFrames);
+    g_RTVDescriptorHeap = CreateDescriptorHeap(g_Device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, bufferCount);
     g_RTVDescriptorSize = g_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
     UpdateRenderTargetViews(g_Device, g_SwapChain, g_RTVDescriptorHeap);
 
-    for (int i = 0; i < g_NumFrames; ++i)
-    {
-        g_CommandAllocators[i] = CreateCommandAllocator(g_Device, D3D12_COMMAND_LIST_TYPE_DIRECT);
-    }
-    g_CommandList = CreateCommandList(g_Device,
-                                      g_CommandAllocators[g_CurrentBackBufferIndex], D3D12_COMMAND_LIST_TYPE_DIRECT);
-
-    g_Fence = CreateFence(g_Device);
-    g_FenceEvent = CreateEventHandle();
 
     g_IsInitialized = true;
 }

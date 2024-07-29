@@ -9,14 +9,19 @@
 using namespace WindowTools;
 
 
+
 int CALLBACK wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLine, int nCmdShow)
 {
 
-    InitWindow(hInstance);
+    RedirectIOToConsole();
+
+    InitApp(hInstance);
 
     MSG msg = {};
+
     while (msg.message != WM_QUIT)
     {
+
         if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
             ::TranslateMessage(&msg);
@@ -25,9 +30,10 @@ int CALLBACK wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdL
     }
 
     // Make sure the command queue has finished all commands before closing.
-    dx_ctx.Flush(dx_ctx.g_CommandQueue, dx_ctx.g_Fence, dx_ctx.g_FenceValue, dx_ctx.g_FenceEvent);
-
-    ::CloseHandle(dx_ctx.g_FenceEvent);
+    dx_ctx.m_DirectCommandQueue->Flush();
+    dx_ctx.m_ComputeCommandQueue->Flush();
+    dx_ctx.m_CopyCommandQueue->Flush();
+    
 
     return 0;
 }

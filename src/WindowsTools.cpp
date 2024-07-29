@@ -48,20 +48,23 @@ namespace WindowTools
 
             // Flush the GPU queue to make sure the swap chain's back buffers
             // are not being referenced by an in-flight command list.
-            dx_ctx.Flush(dx_ctx.g_CommandQueue, dx_ctx.g_Fence, dx_ctx.g_FenceValue, dx_ctx.g_FenceEvent);
-            for (int i = 0; i < dx_ctx.g_NumFrames; ++i)
+
+            dx_ctx.m_DirectCommandQueue->Flush();
+            dx_ctx.m_ComputeCommandQueue->Flush();
+            dx_ctx.m_CopyCommandQueue->Flush();
+
+            for (int i = 0; i < dx_ctx.bufferCount; ++i)
             {
                 // Any references to the back buffers must be released
                 // before the swap chain can be resized.
                 dx_ctx.g_BackBuffers[i].Reset();
-                dx_ctx.g_FrameFenceValues[i] = dx_ctx.g_FrameFenceValues[dx_ctx.g_CurrentBackBufferIndex];
             }
             DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
             ThrowIfFailed(dx_ctx.g_SwapChain->GetDesc(&swapChainDesc));
-            ThrowIfFailed(dx_ctx.g_SwapChain->ResizeBuffers(dx_ctx.g_NumFrames, g_ClientWidth, g_ClientHeight,
-                                                     swapChainDesc.BufferDesc.Format, swapChainDesc.Flags));
+            ThrowIfFailed(dx_ctx.g_SwapChain->ResizeBuffers(dx_ctx.bufferCount, g_ClientWidth, g_ClientHeight,
+                                                            swapChainDesc.BufferDesc.Format, swapChainDesc.Flags));
 
-            dx_ctx.g_CurrentBackBufferIndex = dx_ctx.g_SwapChain->GetCurrentBackBufferIndex();
+            dx_ctx.currentBackBufferIndex = dx_ctx.g_SwapChain->GetCurrentBackBufferIndex();
 
             dx_ctx.UpdateRenderTargetViews(dx_ctx.g_Device, dx_ctx.g_SwapChain, dx_ctx.g_RTVDescriptorHeap);
         }
@@ -144,6 +147,7 @@ namespace WindowTools
     // Window callback function.
     LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
+        static int ct = 0;
         if ( dx_ctx.g_IsInitialized )
         {
             switch (message)
@@ -151,6 +155,7 @@ namespace WindowTools
                 case WM_PAINT:
                     Update();
                     dx_ctx.Render();
+                    std::cout << ct++ << "\n";
                     break;
                 case WM_SYSKEYDOWN:
                 case WM_KEYDOWN:
@@ -192,6 +197,7 @@ namespace WindowTools
                 }
                     break;
                 case WM_DESTROY:
+                case WM_CLOSE:
                     ::PostQuitMessage(0);
                     break;
                 default:
@@ -228,8 +234,30 @@ namespace WindowTools
         assert(atom > 0);
     }
 
-    void InitWindow(HINSTANCE hInstance)
+    void RedirectIOToConsole()
     {
+        // Allouer une console pour cette application.
+        AllocConsole();
+
+        // Rediriger la sortie standard vers la console.
+        FILE* fp;
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+        freopen_s(&fp, "CONOUT$", "w", stderr);
+
+        // Optionnel: rediriger l'entrée standard de la console.
+        freopen_s(&fp, "CONIN$", "r", stdin);
+
+        // Synchroniser les flux de C++ avec ceux de C.
+        std::ios::sync_with_stdio();
+    }
+
+    void InitApp(HINSTANCE hInstance)
+    {
+
+#if defined(_DEBUG)
+        RedirectIOToConsole();
+#endif
+
         // Windows 10 Creators update adds Per Monitor V2 DPI awareness context.
         // Using this awareness context allows the client area of the window
         // to achieve 100% scaling while still allowing non-client window content to
@@ -239,7 +267,7 @@ namespace WindowTools
         const wchar_t* windowClassName = L"RayVox-Engine";
 
         RegisterWindowClass(hInstance, windowClassName);
-        g_hWnd = createWindow(windowClassName, hInstance, L"Learning DirectX 12",
+        g_hWnd = createWindow(windowClassName, hInstance, L"RayVox-Engine",
                               g_ClientWidth, g_ClientHeight);
 
         // Initialize the global window rect variable.

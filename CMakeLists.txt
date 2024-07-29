@@ -19,13 +19,13 @@ add_subdirectory(${include_dir}/DirectX-Headers)
 include_directories(${include_dir})
 
 # Ajouter les fichiers source
-file(GLOB source_files "${source_dir}/*.cpp"
-        DX12Context.cpp
-        WindowsTool.cpp)
+file(GLOB source_files "${source_dir}/*.cpp")
 
 # Ajouter l'exécutable avec les fichiers source
 add_executable(RayVox_Engine WIN32 ${source_files}
-        src/WindowsTools.cpp)
+        src/WindowsTools.cpp
+        src/CommandQueue.cpp)
+
 target_link_libraries(RayVox_Engine d3d12.lib dxgi.lib)
 
 
