@@ -443,7 +443,7 @@ void DX12Context::InitShaders()
                          _countof(planeRenderTarget.indices), sizeof(WORD), planeRenderTarget.indices);
 
     // Create index buffer view.
-    planeRenderTarget.indexBufferView.BufferLocation = planeRenderTarget.vertexBuffer->GetGPUVirtualAddress();
+    planeRenderTarget.indexBufferView.BufferLocation = planeRenderTarget.indexBuffer->GetGPUVirtualAddress();
     planeRenderTarget.indexBufferView.Format = DXGI_FORMAT_R16_UINT;
     planeRenderTarget.indexBufferView.SizeInBytes = sizeof(planeRenderTarget.indices);
 
@@ -465,6 +465,10 @@ void DX12Context::InitShaders()
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             //{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
     };
+
+    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
+    inputLayoutDesc.NumElements = sizeof(inputLayout) / sizeof(D3D12_INPUT_ELEMENT_DESC);
+    inputLayoutDesc.pInputElementDescs = inputLayout;
 
     // Create a root signature.
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
@@ -515,31 +519,45 @@ void DX12Context::InitShaders()
     }
     retreiveDebugMessage();
 
-    struct PipelineStateStream
-    {
-        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
-        CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
-        CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
-        CD3DX12_PIPELINE_STATE_STREAM_VS VS;
-        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
-        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
-    } pipelineStateStream;
+//    struct PipelineStateStream
+//    {
+//        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+//        CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
+//        CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
+//        CD3DX12_PIPELINE_STATE_STREAM_VS VS;
+//        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+//        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+//    } pipelineStateStream;
 
     D3D12_RT_FORMAT_ARRAY rtvFormats = {};
     rtvFormats.NumRenderTargets = 1;
     rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 
-    pipelineStateStream.pRootSignature = rootSignature.Get();
-    pipelineStateStream.InputLayout = { inputLayout, _countof(inputLayout) };
-    pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    pipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-    pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-    pipelineStateStream.RTVFormats = rtvFormats;
+//    pipelineStateStream.pRootSignature = rootSignature.Get();
+//    pipelineStateStream.InputLayout = { inputLayout, _countof(inputLayout) };
+//    pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+//    pipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+//    pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+//    pipelineStateStream.RTVFormats = rtvFormats;
 
-    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
-            sizeof(PipelineStateStream), &pipelineStateStream
-    };
-    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&pipelineState)));
+//    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
+//            sizeof(PipelineStateStream), &pipelineStateStream
+//    };
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.InputLayout = inputLayoutDesc; // the structure describing our input layout
+    psoDesc.pRootSignature = rootSignature.Get(); // the root signature that describes the input data this pso needs
+    psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get()); // structure describing where to find the vertex shader bytecode and how large it is
+    psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get()); // same as VS but for pixel shader
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // type of topology we are drawing
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // format of the render target
+    psoDesc.SampleDesc = { 1, 0 }; // must be the same sample description as the swapchain and depth/stencil buffer
+    psoDesc.SampleMask = 0xffffffff; // sample mask has to do with multi-sampling. 0xffffffff means point sampling is done
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+    psoDesc.NumRenderTargets = 1; // we are only binding one render target
+
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
 
     retreiveDebugMessage();
 

@@ -19,9 +19,9 @@ struct PlaneRenderTarget
     D3D12_INDEX_BUFFER_VIEW indexBufferView;
 
     VertexData vertexDataArray[4]{
-            {{0,0,0}},
-            {{1,0,0}},
-            {{0,1,0}},
+            {{-1,-1,0}},
+            {{-1,1,0}},
+            {{1,-1,0}},
             {{1,1,0}}
     };
 
