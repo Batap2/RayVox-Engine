@@ -1,5 +1,15 @@
 #include "DX12Context.h"
 
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <filesystem>
+
+#include <d3dcompiler.h>
+#include "DirectX-Headers/include/directx/d3dx12_resource_helpers.h"
+
+#include "AssertUtils.h"
+
 void DX12Context::EnableDebugLayer()
 {
 #if defined(_DEBUG)
@@ -226,7 +236,7 @@ void DX12Context::UpdateRenderTargetViews(ComPtr<ID3D12Device2> &device,
 
         device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
 
-        g_BackBuffers[i] = backBuffer;
+        backBuffers[i] = backBuffer;
 
         rtvHandle.Offset(rtvDescriptorSize);
     }
@@ -262,34 +272,281 @@ void DX12Context::transitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsComman
     commandList->ResourceBarrier(1, &barrier);
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetCurrentRenderTargetView() const
+{
+    return CD3DX12_CPU_DESCRIPTOR_HANDLE(RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                                         currentBackBufferIndex, RTVDescriptorSize);
+}
+
+Microsoft::WRL::ComPtr<ID3D12Resource> DX12Context::GetCurrentBackBuffer() const
+{
+    return backBuffers[currentBackBufferIndex];
+}
+
 void DX12Context::Render()
 {
-    auto commandList = m_DirectCommandQueue->GetCommandList();
-    auto backBuffer = g_BackBuffers[currentBackBufferIndex];
+    auto commandList = directCommandQueue->GetCommandList();
+    auto backBuffer = GetCurrentBackBuffer();
+    auto rtv = GetCurrentRenderTargetView();
 
     // Clear the render target.
     {
-        transitionResource(commandList, backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        transitionResource(commandList, backBuffer,
+                           D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
         FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
-        CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-                                          currentBackBufferIndex, g_RTVDescriptorSize);
 
         commandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
     }
+
+    commandList->SetPipelineState(pipelineState.Get());
+
+    commandList->SetGraphicsRootSignature(rootSignature.Get());
+
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &planeRenderTarget.vertexBufferView);
+    commandList->IASetIndexBuffer(&planeRenderTarget.indexBufferView);
+
+    commandList->RSSetViewports(1, &viewport);
+    commandList->RSSetScissorRects(1, &scissorRect);
+
+    commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+    //auto vec = ReadBackVertexBuffer(device.Get(), commandList.Get(), directCommandQueue->GetD3D12CommandQueue().Get(), planeRenderTarget.vertexBuffer.Get());
+
+    commandList->DrawIndexedInstanced(_countof(planeRenderTarget.indices), 1, 0, 0, 0);
     // Present
     {
         transitionResource(commandList, backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-        m_FenceValues[currentBackBufferIndex] = m_DirectCommandQueue->ExecuteCommandList(commandList);
+        fenceValues[currentBackBufferIndex] = directCommandQueue->ExecuteCommandList(commandList);
 
-        UINT syncInterval = g_VSync ? 1 : 0;
-        UINT presentFlags = g_TearingSupported && !g_VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
-        ThrowIfFailed(g_SwapChain->Present(syncInterval, presentFlags));
-        currentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
+        UINT syncInterval = useVSync ? 1 : 0;
+        UINT presentFlags = isTearingSupported && !useVSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+        ThrowIfFailed(swapChain->Present(syncInterval, presentFlags));
+        currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
 
-        m_DirectCommandQueue->WaitForFenceValue(m_FenceValues[currentBackBufferIndex]);
+        directCommandQueue->WaitForFenceValue(fenceValues[currentBackBufferIndex]);
     }
+}
+
+void DX12Context::UpdateBufferResource(ComPtr<ID3D12GraphicsCommandList2> commandList,
+                                       ID3D12Resource **pDestinationResource,
+                                       ID3D12Resource **pIntermediateResource, size_t numElements, size_t elementSize,
+                                       const void *bufferData, D3D12_RESOURCE_FLAGS flags)
+{
+    size_t bufferSize = numElements * elementSize;
+
+    CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, flags);
+
+    // Create a committed resource for the GPU resource in a default heap.
+    ThrowIfFailed(device->CreateCommittedResource(
+            &heapProperties,
+            D3D12_HEAP_FLAG_NONE,
+           &resourceDesc,
+            D3D12_RESOURCE_STATE_COMMON,
+            nullptr,
+            IID_PPV_ARGS(pDestinationResource)));
+
+    // Create an committed resource for the upload.
+    if (bufferData)
+    {
+
+        CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+
+        ThrowIfFailed(device->CreateCommittedResource(
+                &hp,
+                D3D12_HEAP_FLAG_NONE,
+                &rd,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(pIntermediateResource)));
+
+        D3D12_SUBRESOURCE_DATA subresourceData = {};
+        subresourceData.pData = bufferData;
+        subresourceData.RowPitch = bufferSize;
+        subresourceData.SlicePitch = subresourceData.RowPitch;
+
+        UpdateSubresources(commandList.Get(),
+                           *pDestinationResource, *pIntermediateResource,
+                           0, 0, 1, &subresourceData);
+    }
+}
+
+HRESULT DX12Context::CompileShaderFromFile(const std::wstring &filename, const std::string &entryPoint,
+                                           const std::string &target, ComPtr<ID3DBlob> &shaderBlob) {
+    UINT compileFlags = 0;
+#ifdef _DEBUG
+    compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+
+    if (!std::filesystem::exists(filename)) {
+        OutputDebugStringA("Shader file not found.\n");
+        std::cout << "Shader file not found\n";
+        return E_FAIL;
+    }
+
+    ComPtr<ID3DBlob> errorBlob;
+    HRESULT hr =
+            D3DCompileFromFile(
+            filename.c_str(),
+            nullptr,
+            D3D_COMPILE_STANDARD_FILE_INCLUDE,
+            entryPoint.c_str(),
+            target.c_str(),
+            compileFlags,
+            0,
+            &shaderBlob,
+            &errorBlob
+    );
+
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+        }
+        return hr;
+    }
+
+    return S_OK;
+}
+
+void DX12Context::Flush() {
+    directCommandQueue->Flush();
+    computeCommandQueue->Flush();
+    copyCommandQueue->Flush();
+}
+
+void DX12Context::InitShaders()
+{
+    auto commandList = copyCommandQueue->GetCommandList();
+
+    // Upload vertex buffer data.
+    ComPtr<ID3D12Resource> intermediateVertexBuffer;
+    UpdateBufferResource(commandList,
+                         &planeRenderTarget.vertexBuffer, &intermediateVertexBuffer,
+                         _countof(planeRenderTarget.vertexDataArray), sizeof(VertexData),
+                         planeRenderTarget.vertexDataArray);
+
+    // Create the vertex buffer view.
+    planeRenderTarget.vertexBufferView.BufferLocation = planeRenderTarget.vertexBuffer->GetGPUVirtualAddress();
+    planeRenderTarget.vertexBufferView.SizeInBytes = sizeof(planeRenderTarget.vertexDataArray);
+    planeRenderTarget.vertexBufferView.StrideInBytes = sizeof(VertexData);
+
+    // Upload index buffer data.
+    ComPtr<ID3D12Resource> intermediateIndexBuffer;
+    UpdateBufferResource(commandList,
+                         &planeRenderTarget.indexBuffer, &intermediateIndexBuffer,
+                         _countof(planeRenderTarget.indices), sizeof(WORD), planeRenderTarget.indices);
+
+    // Create index buffer view.
+    planeRenderTarget.indexBufferView.BufferLocation = planeRenderTarget.vertexBuffer->GetGPUVirtualAddress();
+    planeRenderTarget.indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+    planeRenderTarget.indexBufferView.SizeInBytes = sizeof(planeRenderTarget.indices);
+
+
+    std::wstring shader_dir;
+    shader_dir = std::filesystem::current_path().filename() == "bin" ? L"../src/Shaders" : L"src/Shaders";
+
+
+    // Compilation du Vertex Shader
+    ComPtr<ID3DBlob> vertexShaderBlob;
+    ThrowIfFailed(CompileShaderFromFile(shader_dir + L"/VertexShader.hlsl", "main", "vs_5_0", vertexShaderBlob));
+
+    // Compilation du Pixel Shader
+    ComPtr<ID3DBlob> pixelShaderBlob;
+    ThrowIfFailed(CompileShaderFromFile(shader_dir + L"/PixelShader.hlsl", "main", "ps_5_0", pixelShaderBlob));
+
+    // Create the vertex input layout
+    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            //{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    };
+
+    // Create a root signature.
+    D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+    featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+    {
+        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+    }
+
+    // Allow input layout and deny unnecessary access to certain pipeline stages.
+    D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+
+    // A single 32-bit constant root parameter that is used by the vertex shader.
+    //CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+    //f(DirectX::XMFLOAT3), 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
+    rootSignatureDescription.Init_1_1(0, nullptr, 0, nullptr, rootSignatureFlags);
+
+    // Serialize the root signature.
+    ComPtr<ID3DBlob> rootSignatureBlob;
+    ComPtr<ID3DBlob> errorBlob;
+
+    if (FAILED(D3DX12SerializeVersionedRootSignature(&rootSignatureDescription,
+                                                     featureData.HighestVersion, &rootSignatureBlob, &errorBlob)))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+        }
+        ThrowIfFailed(E_FAIL); // or some custom error handling
+    }
+
+// Create the root signature.
+    if (FAILED(device->CreateRootSignature(0, rootSignatureBlob->GetBufferPointer(),
+                                           rootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&rootSignature))))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+        }
+        ThrowIfFailed(E_FAIL); // or some custom error handling
+    }
+    retreiveDebugMessage();
+
+    struct PipelineStateStream
+    {
+        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+        CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
+        CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
+        CD3DX12_PIPELINE_STATE_STREAM_VS VS;
+        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+    } pipelineStateStream;
+
+    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+    rtvFormats.NumRenderTargets = 1;
+    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+    pipelineStateStream.pRootSignature = rootSignature.Get();
+    pipelineStateStream.InputLayout = { inputLayout, _countof(inputLayout) };
+    pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    pipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+    pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+    pipelineStateStream.RTVFormats = rtvFormats;
+
+    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
+            sizeof(PipelineStateStream), &pipelineStateStream
+    };
+    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&pipelineState)));
+
+    retreiveDebugMessage();
+
+    auto fenceValue = copyCommandQueue->ExecuteCommandList(commandList);
+    copyCommandQueue->WaitForFenceValue(fenceValue);
+
+    isInitialized = true;
 }
 
 void DX12Context::InitContext(HWND hWnd, uint32_t clientWidth, uint32_t clientHeight)
@@ -297,28 +554,71 @@ void DX12Context::InitContext(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
 #if defined(_DEBUG)
     EnableDebugLayer();
     std::cout << "debug version\n";
+
+    ComPtr<ID3D12Debug> debugController;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+        debugController->EnableDebugLayer();
+    }
+
 #endif
 
-    g_TearingSupported = CheckTearingSupport();
+    width = clientWidth;
+    height = clientHeight;
 
-    ComPtr<IDXGIAdapter4> dxgiAdapter4 = GetAdapter(g_UseWarp);
+    scissorRect = CD3DX12_RECT(0, 0, LONG_MAX, LONG_MAX);
 
-    g_Device = CreateDevice(dxgiAdapter4);
+    isTearingSupported = CheckTearingSupport();
 
-    m_DirectCommandQueue = std::make_shared<CommandQueue>(g_Device, D3D12_COMMAND_LIST_TYPE_DIRECT);
-    m_ComputeCommandQueue = std::make_shared<CommandQueue>(g_Device, D3D12_COMMAND_LIST_TYPE_COMPUTE);
-    m_CopyCommandQueue = std::make_shared<CommandQueue>(g_Device, D3D12_COMMAND_LIST_TYPE_COPY);
+    viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(clientWidth), static_cast<float>(clientHeight));
 
-    g_SwapChain = CreateSwapChain(hWnd, m_DirectCommandQueue,
-                                  clientWidth, clientHeight, bufferCount);
+    ComPtr<IDXGIAdapter4> dxgiAdapter4 = GetAdapter(useWarp);
 
-    currentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
+    device = CreateDevice(dxgiAdapter4);
 
-    g_RTVDescriptorHeap = CreateDescriptorHeap(g_Device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, bufferCount);
-    g_RTVDescriptorSize = g_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    directCommandQueue = std::make_shared<CommandQueue>(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+    computeCommandQueue = std::make_shared<CommandQueue>(device, D3D12_COMMAND_LIST_TYPE_COMPUTE);
+    copyCommandQueue = std::make_shared<CommandQueue>(device, D3D12_COMMAND_LIST_TYPE_COPY);
 
-    UpdateRenderTargetViews(g_Device, g_SwapChain, g_RTVDescriptorHeap);
+    swapChain = CreateSwapChain(hWnd, directCommandQueue,
+                                clientWidth, clientHeight, bufferCount);
 
+    currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
 
-    g_IsInitialized = true;
+    RTVDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, bufferCount);
+    RTVDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+    UpdateRenderTargetViews(device, swapChain, RTVDescriptorHeap);
+
+#if defined(_DEBUG)
+    ComPtr<ID3D12InfoQueue> infoQueue;
+    if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&infoQueue))))
+    {
+        // Optional: Set breakpoints on certain severity levels.
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
+    }
+#endif
+}
+
+void DX12Context::retreiveDebugMessage()
+{
+    ComPtr<ID3D12InfoQueue> infoQueue;
+    if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&infoQueue))))
+    {
+        UINT64 numMessages = infoQueue->GetNumStoredMessages();
+        for (UINT64 i = 0; i < numMessages; i++)
+        {
+            SIZE_T messageLength = 0;
+            infoQueue->GetMessage(i, nullptr, &messageLength); // Get the size of the message
+
+            D3D12_MESSAGE* message = (D3D12_MESSAGE*)malloc(messageLength);
+            infoQueue->GetMessage(i, message, &messageLength); // Get the actual message
+
+            OutputDebugStringA(message->pDescription); // Output to the debug console
+            std::cout << message->pDescription << "\n";
+
+            free(message); // Free the message memory
+        }
+    }
 }

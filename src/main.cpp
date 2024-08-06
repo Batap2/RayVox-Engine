@@ -1,12 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
 
-#include "WindowTools.h"
+#include "App.h"
 #include "DX12Context.h"
 
 #include <iostream>
 #include <string>
 
-using namespace WindowTools;
+using namespace App;
 
 
 
@@ -29,11 +29,9 @@ int CALLBACK wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdL
         }
     }
 
-    // Make sure the command queue has finished all commands before closing.
-    dx_ctx.m_DirectCommandQueue->Flush();
-    dx_ctx.m_ComputeCommandQueue->Flush();
-    dx_ctx.m_CopyCommandQueue->Flush();
-    
+    dx_ctx.directCommandQueue->Flush();
+    dx_ctx.computeCommandQueue->Flush();
+    dx_ctx.copyCommandQueue->Flush();
 
     return 0;
 }

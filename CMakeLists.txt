@@ -23,10 +23,11 @@ file(GLOB source_files "${source_dir}/*.cpp")
 
 # Ajouter l'exécutable avec les fichiers source
 add_executable(RayVox_Engine WIN32 ${source_files}
-        src/WindowsTools.cpp
+        src/DX12Context.cpp
+        src/App.cpp
         src/CommandQueue.cpp)
 
-target_link_libraries(RayVox_Engine d3d12.lib dxgi.lib)
+target_link_libraries(RayVox_Engine d3d12.lib dxgi.lib dxguid.lib D3DCompiler.lib)
 
 
 # Définir _DEBUG pour les builds Debug

@@ -14,41 +14,44 @@ using namespace Microsoft::WRL;
 
 #include <DirectX-Headers/include/directx/d3dx12.h>
 #include <dxgi1_6.h>
-#include <d3dcompiler.h>
-#include <DirectXMath.h>
 
-#include <chrono>
-#include <cstdint>
-#include <iostream>
-#include <memory>
 
-#include "AssertUtils.h"
+
 #include "CommandQueue.h"
+#include "PlaneRenderTarget.h"
 
 struct DX12Context{
     // The number of swap chain back buffers.
     static const uint8_t bufferCount = 3;
     // Use WARP adapter
-    bool g_UseWarp = false;
+    bool useWarp = false;
 
-    // Set to true once the DX12 objects have been initialized.
-    bool g_IsInitialized = false;
+    bool isInitialized = false;
 
-    bool g_VSync = true;
-    bool g_TearingSupported = false;
-    bool g_Fullscreen = false;
+    int width, height;
+    bool useVSync = false;
+    bool isTearingSupported = false;
+    bool fullscreen = false;
 
     // DirectX 12 Objects
-    ComPtr<ID3D12Device2> g_Device;
-    ComPtr<IDXGISwapChain4> g_SwapChain;
-    ComPtr<ID3D12Resource> g_BackBuffers[bufferCount];
-    ComPtr<ID3D12DescriptorHeap> g_RTVDescriptorHeap; // array of rtv for the backbuffers of the swapchain
-    UINT g_RTVDescriptorSize;
+    ComPtr<ID3D12Device2> device;
+    ComPtr<IDXGISwapChain4> swapChain;
+    ComPtr<ID3D12Resource> backBuffers[bufferCount];
+    ComPtr<ID3D12DescriptorHeap> RTVDescriptorHeap; // array of rtv for the backbuffers of the swapchain
+    UINT RTVDescriptorSize;
     UINT currentBackBufferIndex;
 
-    uint64_t m_FenceValues[bufferCount] = {};
+    uint64_t fenceValues[bufferCount] = {};
 
-    std::shared_ptr<CommandQueue> m_DirectCommandQueue, m_ComputeCommandQueue, m_CopyCommandQueue;
+    std::shared_ptr<CommandQueue> directCommandQueue, computeCommandQueue, copyCommandQueue;
+
+    D3D12_VIEWPORT viewport;
+    D3D12_RECT scissorRect;
+
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
+
+    PlaneRenderTarget planeRenderTarget;
 
 
     void EnableDebugLayer();
@@ -85,8 +88,24 @@ struct DX12Context{
 
     void Render();
 
-    void Flush(ComPtr<ID3D12CommandQueue> &commandQueue, ComPtr<ID3D12Fence> &fence,
-                            uint64_t& fenceValue, HANDLE fenceEvent);
+    void Flush();
 
     void InitContext(HWND hWnd, uint32_t clientWidth, uint32_t clientHeight);
+
+    void UpdateBufferResource(ComPtr<ID3D12GraphicsCommandList2> commandList,
+                                           ID3D12Resource **pDestinationResource,
+                                           ID3D12Resource **pIntermediateResource,
+                                           size_t numElements, size_t elementSize,
+                                           const void *bufferData, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE);
+
+    HRESULT CompileShaderFromFile(const std::wstring& filename, const std::string& entryPoint,
+                                  const std::string& target, ComPtr<ID3DBlob>& shaderBlob);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetView() const;
+
+    ComPtr<ID3D12Resource> GetCurrentBackBuffer() const;
+
+    void InitShaders();
+
+    void retreiveDebugMessage();
 };
