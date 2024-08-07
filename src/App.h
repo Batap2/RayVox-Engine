@@ -10,16 +10,16 @@ using namespace Microsoft::WRL;
 
 #include <cstdint>
 
-#include "DX12Context.h"
+#include "DX12ComputeContext.h"
 
 namespace App
 {
     inline HWND hWnd;
     inline RECT windowRect;
-    inline uint32_t clientWidth = 1080;
-    inline uint32_t clientHeight = 720;
+    inline uint32_t clientWidth = 800;
+    inline uint32_t clientHeight = 800;
 
-    inline DX12Context dx_ctx;
+    inline DX12ComputeContext dx_cctx;
 
     void RedirectIOToConsole();
 

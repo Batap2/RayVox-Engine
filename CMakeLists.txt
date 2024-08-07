@@ -24,6 +24,7 @@ file(GLOB source_files "${source_dir}/*.cpp")
 # Ajouter l'exécutable avec les fichiers source
 add_executable(RayVox_Engine WIN32 ${source_files}
         src/DX12Context.cpp
+        src/DX12ComputeContext.cpp
         src/App.cpp
         src/CommandQueue.cpp)
 

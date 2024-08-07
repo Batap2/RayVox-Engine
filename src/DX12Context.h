@@ -22,7 +22,7 @@ using namespace Microsoft::WRL;
 
 struct DX12Context{
     // The number of swap chain back buffers.
-    static const uint8_t bufferCount = 3;
+    inline static const uint8_t bufferCount = 3;
     // Use WARP adapter
     bool useWarp = false;
 
@@ -37,10 +37,13 @@ struct DX12Context{
     ComPtr<ID3D12Device2> device;
     ComPtr<IDXGISwapChain4> swapChain;
     ComPtr<ID3D12Resource> backBuffers[bufferCount];
+    ComPtr<ID3D12Resource> frameBuffer;
     ComPtr<ID3D12DescriptorHeap> RTVDescriptorHeap; // array of rtv for the backbuffers of the swapchain
     UINT RTVDescriptorSize;
-    UINT currentBackBufferIndex;
+    ComPtr<ID3D12DescriptorHeap> CBV_SRV_UAVDescriptorHeap;
+    UINT CBV_SRV_UAVDescriptorSize;
 
+    UINT currentBackBufferIndex;
     uint64_t fenceValues[bufferCount] = {};
 
     std::shared_ptr<CommandQueue> directCommandQueue, computeCommandQueue, copyCommandQueue;
@@ -48,8 +51,11 @@ struct DX12Context{
     D3D12_VIEWPORT viewport;
     D3D12_RECT scissorRect;
 
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> basicRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> basicPipelineState;
+
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> computePipelineState;
 
     PlaneRenderTarget planeRenderTarget;
 
@@ -70,13 +76,15 @@ struct DX12Context{
 
     ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(ComPtr<ID3D12Device2> &device,
                                                       D3D12_DESCRIPTOR_HEAP_TYPE type,
-                                                      uint32_t numDescriptors);
+                                                      uint32_t numDescriptors,
+                                                      D3D12_DESCRIPTOR_HEAP_FLAGS flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
     void UpdateRenderTargetViews(ComPtr<ID3D12Device2> &device,
                                  ComPtr<IDXGISwapChain4> &swapChain,
                                  ComPtr<ID3D12DescriptorHeap> &descriptorHeap);
 
-
+    void UpdateFrameBuffers(ComPtr<ID3D12Device2> &device,
+                            ComPtr<IDXGISwapChain4> &swapChain, ComPtr<ID3D12DescriptorHeap> &descriptorHeap);
 
     ComPtr<ID3D12Fence> CreateFence(ComPtr<ID3D12Device2> &device);
 
@@ -98,14 +106,20 @@ struct DX12Context{
                                            size_t numElements, size_t elementSize,
                                            const void *bufferData, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE);
 
+    void UpdateBufferResource2D(ID3D12Resource **pDestinationResource, D3D12_RESOURCE_FLAGS flags);
+
     HRESULT CompileShaderFromFile(const std::wstring& filename, const std::string& entryPoint,
                                   const std::string& target, ComPtr<ID3DBlob>& shaderBlob);
 
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetView() const;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentFrameBufferHandle() const;
 
     ComPtr<ID3D12Resource> GetCurrentBackBuffer() const;
 
     void InitShaders();
 
     void retreiveDebugMessage();
+
+    void CreateFrameBuffer(ID3D12Resource **pDestinationResource, D3D12_RESOURCE_FLAGS flags);
 };

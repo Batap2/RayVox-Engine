@@ -47,84 +47,85 @@ namespace App
     void Resize(uint32_t width, uint32_t height)
     {
 
-        if (clientWidth != width || clientHeight != height)
-        {
-            // Don't allow 0 size swap chain back buffers.
-            clientWidth = std::max(1u, width );
-            clientHeight = std::max(1u, height);
-
-            // Flush the GPU queue to make sure the swap chain's back buffers
-            // are not being referenced by an in-flight command list.
-
-            dx_ctx.directCommandQueue->Flush();
-            dx_ctx.computeCommandQueue->Flush();
-            dx_ctx.copyCommandQueue->Flush();
-
-            for (int i = 0; i < dx_ctx.bufferCount; ++i)
-            {
-                // Any references to the back buffers must be released
-                // before the swap chain can be resized.
-                dx_ctx.backBuffers[i].Reset();
-            }
-            DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
-            ThrowIfFailed(dx_ctx.swapChain->GetDesc(&swapChainDesc));
-            ThrowIfFailed(dx_ctx.swapChain->ResizeBuffers(dx_ctx.bufferCount, clientWidth, clientHeight,
-                                                          swapChainDesc.BufferDesc.Format, swapChainDesc.Flags));
-
-            dx_ctx.currentBackBufferIndex = dx_ctx.swapChain->GetCurrentBackBufferIndex();
-
-            dx_ctx.UpdateRenderTargetViews(dx_ctx.device, dx_ctx.swapChain, dx_ctx.RTVDescriptorHeap);
-        }
+//        if (clientWidth != width || clientHeight != height)
+//        {
+//            // Don't allow 0 size swap chain back buffers.
+//            clientWidth = std::max(1u, width );
+//            clientHeight = std::max(1u, height);
+//
+//            // Flush the GPU queue to make sure the swap chain's back buffers
+//            // are not being referenced by an in-flight command list.
+//
+//            dx_cctx.directCommandQueue->Flush();
+//            dx_cctx.computeCommandQueue->Flush();
+//            dx_cctx.copyCommandQueue->Flush();
+//
+//            for (int i = 0; i < dx_cctx.bufferCount; ++i)
+//            {
+//                // Any references to the back buffers must be released
+//                // before the swap chain can be resized.
+//                dx_cctx.backBuffers[i].Reset();
+//            }
+//            DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
+//            ThrowIfFailed(dx_cctx.swapChain->GetDesc(&swapChainDesc));
+//            ThrowIfFailed(dx_cctx.swapChain->ResizeBuffers(dx_cctx.bufferCount, clientWidth, clientHeight,
+//                                                           swapChainDesc.BufferDesc.Format, swapChainDesc.Flags));
+//
+//            dx_cctx.currentBackBufferIndex = dx_cctx.swapChain->GetCurrentBackBufferIndex();
+//
+//            dx_cctx.UpdateRenderTargetViews(dx_cctx.device, dx_cctx.swapChain, dx_cctx.RTVDescriptorHeap);
+//            dx_cctx.UpdateFrameBuffers(dx_cctx.device, dx_cctx.swapChain, dx_cctx.CBV_SRV_UAVDescriptorHeap);
+//        }
 
     }
 
     void SetFullscreen(bool fullscreen)
     {
-        if (dx_ctx.fullscreen != fullscreen)
-        {
-            dx_ctx.fullscreen = fullscreen;
-
-            if (dx_ctx.fullscreen) // Switching to fullscreen.
-            {
-                // Store the current window dimensions so they can be restored
-                // when switching out of fullscreen state.
-                ::GetWindowRect(hWnd, &windowRect);
-                // Set the window style to a borderless window so the client area fills
-                // the entire screen.
-                UINT windowStyle = WS_OVERLAPPEDWINDOW & ~(WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
-
-                ::SetWindowLongW(hWnd, GWL_STYLE, windowStyle);
-                // Query the name of the nearest display device for the window.
-                // This is required to set the fullscreen dimensions of the window
-                // when using a multi-monitor setup.
-                HMONITOR hMonitor = ::MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
-                MONITORINFOEX monitorInfo = {};
-                monitorInfo.cbSize = sizeof(MONITORINFOEX);
-                ::GetMonitorInfo(hMonitor, &monitorInfo);
-                ::SetWindowPos(hWnd, HWND_TOP,
-                               monitorInfo.rcMonitor.left,
-                               monitorInfo.rcMonitor.top,
-                               monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
-                               monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
-                               SWP_FRAMECHANGED | SWP_NOACTIVATE);
-
-                ::ShowWindow(hWnd, SW_MAXIMIZE);
-            }
-            else
-            {
-                // Restore all the window decorators.
-                ::SetWindowLong(hWnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
-
-                ::SetWindowPos(hWnd, HWND_NOTOPMOST,
-                               windowRect.left,
-                               windowRect.top,
-                               windowRect.right - windowRect.left,
-                               windowRect.bottom - windowRect.top,
-                               SWP_FRAMECHANGED | SWP_NOACTIVATE);
-
-                ::ShowWindow(hWnd, SW_NORMAL);
-            }
-        }
+//        if (dx_cctx.fullscreen != fullscreen)
+//        {
+//            dx_cctx.fullscreen = fullscreen;
+//
+//            if (dx_cctx.fullscreen) // Switching to fullscreen.
+//            {
+//                // Store the current window dimensions so they can be restored
+//                // when switching out of fullscreen state.
+//                ::GetWindowRect(hWnd, &windowRect);
+//                // Set the window style to a borderless window so the client area fills
+//                // the entire screen.
+//                UINT windowStyle = WS_OVERLAPPEDWINDOW & ~(WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+//
+//                ::SetWindowLongW(hWnd, GWL_STYLE, windowStyle);
+//                // Query the name of the nearest display device for the window.
+//                // This is required to set the fullscreen dimensions of the window
+//                // when using a multi-monitor setup.
+//                HMONITOR hMonitor = ::MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+//                MONITORINFOEX monitorInfo = {};
+//                monitorInfo.cbSize = sizeof(MONITORINFOEX);
+//                ::GetMonitorInfo(hMonitor, &monitorInfo);
+//                ::SetWindowPos(hWnd, HWND_TOP,
+//                               monitorInfo.rcMonitor.left,
+//                               monitorInfo.rcMonitor.top,
+//                               monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+//                               monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+//                               SWP_FRAMECHANGED | SWP_NOACTIVATE);
+//
+//                ::ShowWindow(hWnd, SW_MAXIMIZE);
+//            }
+//            else
+//            {
+//                // Restore all the window decorators.
+//                ::SetWindowLong(hWnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+//
+//                ::SetWindowPos(hWnd, HWND_NOTOPMOST,
+//                               windowRect.left,
+//                               windowRect.top,
+//                               windowRect.right - windowRect.left,
+//                               windowRect.bottom - windowRect.top,
+//                               SWP_FRAMECHANGED | SWP_NOACTIVATE);
+//
+//                ::ShowWindow(hWnd, SW_NORMAL);
+//            }
+//        }
     }
 
     void Update()
@@ -154,13 +155,13 @@ namespace App
     // Window callback function.
     LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
-        if ( dx_ctx.isInitialized )
+        if ( dx_cctx.isInitialized )
         {
             switch (message)
             {
                 case WM_PAINT:
                     Update();
-                    dx_ctx.Render();
+                    dx_cctx.render();
                     break;
                 case WM_SYSKEYDOWN:
                 case WM_KEYDOWN:
@@ -170,7 +171,7 @@ namespace App
                     switch (wParam)
                     {
                         case 'V':
-                            dx_ctx.useVSync = !dx_ctx.useVSync;
+                            dx_cctx.useVSync = !dx_cctx.useVSync;
                             break;
                         case VK_ESCAPE:
                             ::PostQuitMessage(0);
@@ -179,7 +180,7 @@ namespace App
                             if ( alt )
                             {
                                 case VK_F11:
-                                    SetFullscreen(!dx_ctx.fullscreen);
+                                    SetFullscreen(!dx_cctx.fullscreen);
                             }
                             break;
                     }
@@ -278,9 +279,7 @@ namespace App
         // Initialize the global window rect variable.
         ::GetWindowRect(hWnd, &windowRect);
 
-        dx_ctx.InitContext(hWnd, clientWidth, clientHeight);
-
-        dx_ctx.InitShaders();
+        dx_cctx.init(hWnd, clientWidth, clientHeight);
 
         ::ShowWindow(hWnd, SW_SHOW);
     }

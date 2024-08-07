@@ -29,9 +29,7 @@ int CALLBACK wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdL
         }
     }
 
-    dx_ctx.directCommandQueue->Flush();
-    dx_ctx.computeCommandQueue->Flush();
-    dx_ctx.copyCommandQueue->Flush();
+    dx_cctx.flush();
 
     return 0;
 }

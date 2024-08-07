@@ -183,7 +183,8 @@ ComPtr<IDXGISwapChain4> DX12Context::CreateSwapChain(HWND hWnd,
     swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     swapChainDesc.Stereo = FALSE;
     swapChainDesc.SampleDesc = { 1, 0 };
-    swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    //swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapChainDesc.BufferUsage = DXGI_USAGE_BACK_BUFFER;
     swapChainDesc.BufferCount = bufferCount;
     swapChainDesc.Scaling = DXGI_SCALING_STRETCH;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -209,13 +210,15 @@ ComPtr<IDXGISwapChain4> DX12Context::CreateSwapChain(HWND hWnd,
 }
 
 ComPtr<ID3D12DescriptorHeap> DX12Context::CreateDescriptorHeap(ComPtr<ID3D12Device2> &device,
-                                                  D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t numDescriptors)
+                                                  D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t numDescriptors,
+                                                               D3D12_DESCRIPTOR_HEAP_FLAGS flags)
 {
     ComPtr<ID3D12DescriptorHeap> descriptorHeap;
 
     D3D12_DESCRIPTOR_HEAP_DESC desc = {};
     desc.NumDescriptors = numDescriptors;
     desc.Type = type;
+    desc.Flags = flags;
 
     ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&descriptorHeap)));
 
@@ -239,6 +242,27 @@ void DX12Context::UpdateRenderTargetViews(ComPtr<ID3D12Device2> &device,
         backBuffers[i] = backBuffer;
 
         rtvHandle.Offset(rtvDescriptorSize);
+    }
+}
+
+void DX12Context::UpdateFrameBuffers(ComPtr<ID3D12Device2> &device,
+                                     ComPtr<IDXGISwapChain4> &swapChain, ComPtr<ID3D12DescriptorHeap> &descriptorHeap)
+{
+    auto UAVDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE fHandle(descriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+    for (int i = 0; i < bufferCount; ++i)
+    {
+        ComPtr<ID3D12Resource> backBuffer;
+        ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer)));
+
+        CreateFrameBuffer(backBuffer.GetAddressOf(), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        device->CreateUnorderedAccessView(backBuffer.Get(), nullptr, nullptr, fHandle);
+
+        backBuffers[i] = backBuffer;
+
+        fHandle.Offset(UAVDescriptorSize);
     }
 }
 
@@ -278,6 +302,12 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetCurrentRenderTargetView() const
                                          currentBackBufferIndex, RTVDescriptorSize);
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetCurrentFrameBufferHandle() const
+{
+    return CD3DX12_CPU_DESCRIPTOR_HANDLE(RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                                         currentBackBufferIndex, RTVDescriptorSize);
+}
+
 Microsoft::WRL::ComPtr<ID3D12Resource> DX12Context::GetCurrentBackBuffer() const
 {
     return backBuffers[currentBackBufferIndex];
@@ -287,47 +317,79 @@ void DX12Context::Render()
 {
     auto commandList = directCommandQueue->GetCommandList();
     auto backBuffer = GetCurrentBackBuffer();
-    auto rtv = GetCurrentRenderTargetView();
+//    auto rtv = GetCurrentRenderTargetView();
+//
+//    // Clear the render target.
+//    {
+//        transitionResource(commandList, backBuffer,
+//                           D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+//
+//        FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+//
+//        commandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+//    }
+//
+//    commandList->SetPipelineState(basicPipelineState.Get());
+//
+//    commandList->SetGraphicsRootSignature(basicRootSignature.Get());
+//
+//    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+//    commandList->IASetVertexBuffers(0, 1, &planeRenderTarget.vertexBufferView);
+//    commandList->IASetIndexBuffer(&planeRenderTarget.indexBufferView);
+//
+//    commandList->RSSetViewports(1, &viewport);
+//    commandList->RSSetScissorRects(1, &scissorRect);
+//
+//    commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+//
+//    //auto vec = ReadBackVertexBuffer(device.Get(), commandList.Get(), directCommandQueue->GetD3D12CommandQueue().Get(), planeRenderTarget.vertexBuffer.Get());
+//
+//    commandList->DrawIndexedInstanced(_countof(planeRenderTarget.indices), 1, 0, 0, 0);
+//    // Present
+//    {
+//        transitionResource(commandList, backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+//
+//        fenceValues[currentBackBufferIndex] = directCommandQueue->ExecuteCommandList(commandList);
+//
+//        UINT syncInterval = useVSync ? 1 : 0;
+//        UINT presentFlags = isTearingSupported && !useVSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+//        ThrowIfFailed(swapChain->Present(syncInterval, presentFlags));
+//        currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
+//
+//        directCommandQueue->WaitForFenceValue(fenceValues[currentBackBufferIndex]);
+//    }
 
-    // Clear the render target.
-    {
-        transitionResource(commandList, backBuffer,
-                           D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commandList->SetPipelineState(computePipelineState.Get());
+    commandList->SetComputeRootSignature(computeRootSignature.Get());
+    commandList->SetDescriptorHeaps(1, CBV_SRV_UAVDescriptorHeap.GetAddressOf());
+    commandList->SetComputeRootDescriptorTable(0, CBV_SRV_UAVDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+    commandList->Dispatch(width/8, height/8, 1);
 
-        FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+    retreiveDebugMessage();
 
-        commandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-    }
 
-    commandList->SetPipelineState(pipelineState.Get());
+    transitionResource(commandList, frameBuffer,
+                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    transitionResource(commandList, backBuffer,
+                       D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
 
-    commandList->SetGraphicsRootSignature(rootSignature.Get());
+    commandList->CopyResource(backBuffer.Get(), frameBuffer.Get());
 
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commandList->IASetVertexBuffers(0, 1, &planeRenderTarget.vertexBufferView);
-    commandList->IASetIndexBuffer(&planeRenderTarget.indexBufferView);
+    retreiveDebugMessage();
 
-    commandList->RSSetViewports(1, &viewport);
-    commandList->RSSetScissorRects(1, &scissorRect);
+    transitionResource(commandList, frameBuffer,
+                       D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    transitionResource(commandList, backBuffer,
+                       D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
 
-    commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    UINT syncInterval = useVSync ? 1 : 0;
+    UINT presentFlags = isTearingSupported && !useVSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+    ThrowIfFailed(swapChain->Present(syncInterval, presentFlags));
+    currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
 
-    //auto vec = ReadBackVertexBuffer(device.Get(), commandList.Get(), directCommandQueue->GetD3D12CommandQueue().Get(), planeRenderTarget.vertexBuffer.Get());
+    directCommandQueue->WaitForFenceValue(fenceValues[currentBackBufferIndex]);
 
-    commandList->DrawIndexedInstanced(_countof(planeRenderTarget.indices), 1, 0, 0, 0);
-    // Present
-    {
-        transitionResource(commandList, backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-
-        fenceValues[currentBackBufferIndex] = directCommandQueue->ExecuteCommandList(commandList);
-
-        UINT syncInterval = useVSync ? 1 : 0;
-        UINT presentFlags = isTearingSupported && !useVSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
-        ThrowIfFailed(swapChain->Present(syncInterval, presentFlags));
-        currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
-
-        directCommandQueue->WaitForFenceValue(fenceValues[currentBackBufferIndex]);
-    }
+    retreiveDebugMessage();
 }
 
 void DX12Context::UpdateBufferResource(ComPtr<ID3D12GraphicsCommandList2> commandList,
@@ -373,6 +435,22 @@ void DX12Context::UpdateBufferResource(ComPtr<ID3D12GraphicsCommandList2> comman
                            *pDestinationResource, *pIntermediateResource,
                            0, 0, 1, &subresourceData);
     }
+}
+
+void DX12Context::CreateFrameBuffer(ID3D12Resource **pDestinationResource, D3D12_RESOURCE_FLAGS flags)
+{
+    CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+    auto resourceDesc = backBuffers[0]->GetDesc();
+    resourceDesc.Flags |= flags;
+    
+    // Create a committed resource for the GPU resource in a default heap.
+    ThrowIfFailed(device->CreateCommittedResource(
+            &heapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &resourceDesc,
+            D3D12_RESOURCE_STATE_COMMON,
+            nullptr,
+            IID_PPV_ARGS(pDestinationResource)));
 }
 
 HRESULT DX12Context::CompileShaderFromFile(const std::wstring &filename, const std::string &entryPoint,
@@ -431,6 +509,9 @@ void DX12Context::InitShaders()
                          _countof(planeRenderTarget.vertexDataArray), sizeof(VertexData),
                          planeRenderTarget.vertexDataArray);
 
+    CreateFrameBuffer(&frameBuffer, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    device->CreateUnorderedAccessView(frameBuffer.Get(), nullptr, nullptr, CBV_SRV_UAVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
     // Create the vertex buffer view.
     planeRenderTarget.vertexBufferView.BufferLocation = planeRenderTarget.vertexBuffer->GetGPUVirtualAddress();
     planeRenderTarget.vertexBufferView.SizeInBytes = sizeof(planeRenderTarget.vertexDataArray);
@@ -459,6 +540,9 @@ void DX12Context::InitShaders()
     // Compilation du Pixel Shader
     ComPtr<ID3DBlob> pixelShaderBlob;
     ThrowIfFailed(CompileShaderFromFile(shader_dir + L"/PixelShader.hlsl", "main", "ps_5_0", pixelShaderBlob));
+
+    ComPtr<ID3DBlob> computeShaderBlob;
+    ThrowIfFailed(CompileShaderFromFile(shader_dir + L"/ComputeShader.hlsl", "main", "cs_5_0", computeShaderBlob));
 
     // Create the vertex input layout
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
@@ -494,70 +578,74 @@ void DX12Context::InitShaders()
     rootSignatureDescription.Init_1_1(0, nullptr, 0, nullptr, rootSignatureFlags);
 
     // Serialize the root signature.
-    ComPtr<ID3DBlob> rootSignatureBlob;
+    ComPtr<ID3DBlob> basicRootSignatureBlob;
     ComPtr<ID3DBlob> errorBlob;
 
-    if (FAILED(D3DX12SerializeVersionedRootSignature(&rootSignatureDescription,
-                                                     featureData.HighestVersion, &rootSignatureBlob, &errorBlob)))
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDescription,
+                                                            featureData.HighestVersion,
+                                                            &basicRootSignatureBlob,
+                                                            &errorBlob));
+    // Create the root signature.
+    ThrowIfFailed(device->CreateRootSignature(0, basicRootSignatureBlob->GetBufferPointer(),
+                                              basicRootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&basicRootSignature)));
+
+
     {
-        if (errorBlob)
-        {
-            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-        }
-        ThrowIfFailed(E_FAIL); // or some custom error handling
+        D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+        rtvFormats.NumRenderTargets = 1;
+        rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = inputLayoutDesc; // the structure describing our input layout
+        psoDesc.pRootSignature = basicRootSignature.Get(); // the root signature that describes the input data this pso needs
+        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get()); // structure describing where to find the vertex shader bytecode and how large it is
+        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get()); // same as VS but for pixel shader
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // type of topology we are drawing
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // format of the render target
+        psoDesc.SampleDesc = { 1, 0 }; // must be the same sample description as the swapchain and depth/stencil buffer
+        psoDesc.SampleMask = 0xffffffff; // sample mask has to do with multi-sampling. 0xffffffff means point sampling is done
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+        psoDesc.NumRenderTargets = 1; // we are only binding one render target
+
+        ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&basicPipelineState)));
     }
 
-// Create the root signature.
-    if (FAILED(device->CreateRootSignature(0, rootSignatureBlob->GetBufferPointer(),
-                                           rootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&rootSignature))))
+    // ----------------- Root Signature for Compute Shader ---------------------
     {
-        if (errorBlob)
-        {
-            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-        }
-        ThrowIfFailed(E_FAIL); // or some custom error handling
+        // Description des éléments de la signature racine
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // Un UAV à l'emplacement 0
+
+        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
+
+        // Définir les flags de la signature racine
+        D3D12_ROOT_SIGNATURE_FLAGS computeRootSignatureFlags =
+                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+        // Créer la signature racine
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+        computeRootSignatureDesc.Init_1_1(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, computeRootSignatureFlags);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+
+        ThrowIfFailed(D3D12SerializeVersionedRootSignature(&computeRootSignatureDesc, &signature, &error));
+
+        ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)));
     }
-    retreiveDebugMessage();
 
-//    struct PipelineStateStream
-//    {
-//        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
-//        CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
-//        CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
-//        CD3DX12_PIPELINE_STATE_STREAM_VS VS;
-//        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
-//        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
-//    } pipelineStateStream;
+    // ------------- PSO for Compute Shader -----------
+    {
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.pRootSignature = computeRootSignature.Get();
+        psoDesc.CS.BytecodeLength = computeShaderBlob->GetBufferSize();
+        psoDesc.CS.pShaderBytecode = computeShaderBlob->GetBufferPointer();
 
-    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
-    rtvFormats.NumRenderTargets = 1;
-    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&computePipelineState)));
+    }
 
-//    pipelineStateStream.pRootSignature = rootSignature.Get();
-//    pipelineStateStream.InputLayout = { inputLayout, _countof(inputLayout) };
-//    pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-//    pipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-//    pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-//    pipelineStateStream.RTVFormats = rtvFormats;
-
-//    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
-//            sizeof(PipelineStateStream), &pipelineStateStream
-//    };
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.InputLayout = inputLayoutDesc; // the structure describing our input layout
-    psoDesc.pRootSignature = rootSignature.Get(); // the root signature that describes the input data this pso needs
-    psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get()); // structure describing where to find the vertex shader bytecode and how large it is
-    psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get()); // same as VS but for pixel shader
-    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // type of topology we are drawing
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // format of the render target
-    psoDesc.SampleDesc = { 1, 0 }; // must be the same sample description as the swapchain and depth/stencil buffer
-    psoDesc.SampleMask = 0xffffffff; // sample mask has to do with multi-sampling. 0xffffffff means point sampling is done
-    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
-    psoDesc.NumRenderTargets = 1; // we are only binding one render target
-
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
 
     retreiveDebugMessage();
 
@@ -605,7 +693,11 @@ void DX12Context::InitContext(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
     RTVDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, bufferCount);
     RTVDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
+    CBV_SRV_UAVDescriptorHeap = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, bufferCount, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+    CBV_SRV_UAVDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
     UpdateRenderTargetViews(device, swapChain, RTVDescriptorHeap);
+    UpdateFrameBuffers(device, swapChain, CBV_SRV_UAVDescriptorHeap);
 
 #if defined(_DEBUG)
     ComPtr<ID3D12InfoQueue> infoQueue;
