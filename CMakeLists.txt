@@ -26,7 +26,8 @@ add_executable(RayVox_Engine WIN32 ${source_files}
         src/DX12Context.cpp
         src/DX12ComputeContext.cpp
         src/App.cpp
-        src/CommandQueue.cpp)
+        src/CommandQueue.cpp
+        )
 
 target_link_libraries(RayVox_Engine d3d12.lib dxgi.lib dxguid.lib D3DCompiler.lib)
 

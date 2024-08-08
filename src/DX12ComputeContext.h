@@ -1,6 +1,8 @@
 #pragma once
 
-#include "includeFile.h"
+#include "includeDX12.h"
+#include "Camera.h"
+#include "DX12Resource.h"
 
 struct DX12ComputeContext
 {
@@ -41,8 +43,11 @@ struct DX12ComputeContext
 
     uint32_t width, height;
 
-
     uint32_t threadGroupCountX, threadGroupCountY, threadGroupCountZ;
+
+    Camera camera;
+
+    DX12Resource cameraBuffer;
 
     HRESULT CompileShaderFromFile(const std::wstring &filename, const std::string &entryPoint,
                                                       const std::string &target, ComPtr<ID3DBlob> &shaderBlob);

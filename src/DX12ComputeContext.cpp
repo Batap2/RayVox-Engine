@@ -145,23 +145,7 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
         ThrowIfFailed( swapchain_buffers[i]->SetName(L"swapchain_buffer"));
     }
 
-    // Retrieve swapchain buffer description and create identical resource but with UAV allowed, so compute shader could write to it
-    auto buffer_desc = swapchain_buffers[0]->GetDesc();
-    buffer_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
-    const CD3DX12_HEAP_PROPERTIES default_heap_props{ D3D12_HEAP_TYPE_DEFAULT };
-
-    ThrowIfFailed( device->CreateCommittedResource(
-            &default_heap_props, D3D12_HEAP_FLAG_NONE,
-            &buffer_desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            nullptr, IID_PPV_ARGS(&framebuffer)));
-
-    ThrowIfFailed( framebuffer->SetName(L"framebuffer"));
-/* Create view for our framebuffer so compute shader can access it
-*  passing UAV desc is not neccessary? it's determined automatically by system(correctly)
-*  using first handle/descriptor in the heap as currently we dont have any other resources
-*/
-    device->CreateUnorderedAccessView(framebuffer.Get(), nullptr, nullptr, descriptor_heap->GetCPUDescriptorHandleForHeapStart());
 
     std::wstring shader_dir;
     shader_dir = std::filesystem::current_path().filename() == "bin" ? L"../src/Shaders" : L"src/Shaders";
@@ -174,9 +158,11 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
         // Description des éléments de la signature racine
         CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // Un UAV à l'emplacement 0
+        //ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[1];
         rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
+        //rootParameters[1].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_ALL);
 
         // Définir les flags de la signature racine
         D3D12_ROOT_SIGNATURE_FLAGS computeRootSignatureFlags =
@@ -194,11 +180,35 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
         ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&root_signature)));
     }
 
+    // Retrieve swapchain buffer description and create identical resource but with UAV allowed, so compute shader could write to it
+    auto buffer_desc = swapchain_buffers[0]->GetDesc();
+    buffer_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    const CD3DX12_HEAP_PROPERTIES default_heap_props{ D3D12_HEAP_TYPE_DEFAULT };
+
+    ThrowIfFailed( device->CreateCommittedResource(
+            &default_heap_props, D3D12_HEAP_FLAG_NONE,
+            &buffer_desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr, IID_PPV_ARGS(&framebuffer)));
+
+    ThrowIfFailed( framebuffer->SetName(L"framebuffer"));
+    /* Create view for our framebuffer so compute shader can access it
+    *  passing UAV desc is not neccessary? it's determined automatically by system(correctly)
+    *  using first handle/descriptor in the heap as currently we dont have any other resources
+    */
+    device->CreateUnorderedAccessView(framebuffer.Get(), nullptr, nullptr, descriptor_heap->GetCPUDescriptorHandleForHeapStart());
+
     D3D12_COMPUTE_PIPELINE_STATE_DESC pso_desc = {};
     pso_desc.pRootSignature = root_signature.Get();
     pso_desc.CS.BytecodeLength = computeShaderBlob->GetBufferSize();
     pso_desc.CS.pShaderBytecode = computeShaderBlob->GetBufferPointer();
     ThrowIfFailed( device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&pso)));
+
+    camera = Camera({0,1,0},{0,0,0},{0,1,0},
+                    80, (float)width/(float)height, 0.1, 100);
+
+    CameraBuffer cameraBufferData = {camera.viewProjMatrix, camera.getPos(), 0};
+    //cameraBuffer.createOrUpdateConstantBuffer(device.Get(), command_list.Get(), cameraBufferData, descriptor_heap.Get());
 
     isInitialized = true;
 }
@@ -213,9 +223,13 @@ void DX12ComputeContext::render()
     command_list->SetComputeRootSignature(root_signature.Get());
     command_list->SetDescriptorHeaps(1, descriptor_heap.GetAddressOf());
 
+    // Set the root descriptor table for the UAV (at slot 0)
+    CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(descriptor_heap->GetGPUDescriptorHandleForHeapStart(), 0, device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+    command_list->SetComputeRootDescriptorTable(0, uavHandle);
 
-    command_list->SetComputeRootDescriptorTable(0, descriptor_heap->GetGPUDescriptorHandleForHeapStart());
-
+    // Set the root descriptor table for the CBV (at slot 1)
+    //CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(descriptor_heap->GetGPUDescriptorHandleForHeapStart(), 1, device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+    //command_list->SetComputeRootDescriptorTable(1, cbvHandle);
 
     command_list->Dispatch(threadGroupCountX, threadGroupCountY, threadGroupCountZ);
 
@@ -263,21 +277,19 @@ void DX12ComputeContext::render()
     swapchain->Present(1, 0);
 }
 
-void DX12ComputeContext::flush() {
+void DX12ComputeContext::flush()
+{
     if (fence->GetCompletedValue() < fence_value)
     {
         fence->SetEventOnCompletion(fence_value, fence_event);
         ::WaitForSingleObject(fence_event, DWORD_MAX);
     }
 
-    // Signale le GPU que les commandes sont complètes.
     ThrowIfFailed(direct_command_queue->Signal(fence.Get(), fence_value));
 
-// Attends que le GPU ait terminé toutes les commandes avant de libérer les ressources.
     ThrowIfFailed(fence->SetEventOnCompletion(fence_value, fence_event));
-    WaitForSingleObject(fence_event, INFINITE);
+    ::WaitForSingleObject(fence_event, INFINITE);
 
-// Libération des ressources après avoir attendu que le GPU ait terminé les opérations.
     for(int i = 0; i < buffer_count; ++i)
     {
         swapchain_buffers[i].Reset();
