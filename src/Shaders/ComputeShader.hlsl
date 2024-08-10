@@ -44,7 +44,7 @@ Ray GenerateRay(float2 pixelPos, float2 screenSize, float3 cameraPos,
 
     float tanFov = tan(radians(fov) * 0.5f);
 
-    float3 up = cross(forward, right);
+    float3 up = cross(right, forward);
 
     // Camera space coordinates
     float3 cameraSpaceDir = normalize(ndc.x * right * tanFov + ndc.y * up * tanFov + forward);
