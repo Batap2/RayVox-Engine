@@ -81,7 +81,7 @@ struct Camera
     void move(const XMVECTOR& direction)
     {
         XMVECTOR posVec = XMLoadFloat3(&pos);
-        posVec = XMVectorAdd(posVec, XMVectorScale(direction, speed * 10));
+        posVec = XMVectorAdd(posVec, XMVectorScale(direction, speed));
         XMStoreFloat3(&pos, posVec);
     }
 

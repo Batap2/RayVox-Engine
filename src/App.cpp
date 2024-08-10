@@ -186,6 +186,8 @@ namespace App
                 case WM_PAINT:
                     Update();
                     dx_cctx.render();
+                    inputManager.processTickInput();
+
                     break;
                 case WM_SYSKEYDOWN:
                 case WM_KEYDOWN:

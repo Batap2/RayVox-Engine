@@ -199,7 +199,7 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
     ++currentlyInitDescriptor;
 
     camera = Camera({0,0,-10},{0,0,1},{0,1,0},
-                    80, (float)width/(float)height, 0.1, 100);
+                    80, (float)width/(float)height, 0.1f, 100);
 
     CameraBuffer cameraBufferData = camera.getCameraBuffer();
     cameraBuffer.createOrUpdateConstantBuffer(device.Get(), command_list.Get(), cameraBufferData,

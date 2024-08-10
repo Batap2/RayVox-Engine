@@ -7,9 +7,23 @@ struct InputManager
 {
     DX12ComputeContext* ctx;
 
-    int lastMousePos[2] = {-1,-1};
+    bool holdedKey[9] = {false};
+    enum KeyIndex
+    {
+        Forward,
+        Backward,
+        Left,
+        Right,
+        Up,
+        Down,
+        SHIFT,
+        CTRL,
+        SPACE
+    };
 
     void manageInput(UINT message, WPARAM wParam, LPARAM lParam);
 
     void ProcessRawInput(LPARAM hRawInput);
+
+    void processTickInput();
 };
