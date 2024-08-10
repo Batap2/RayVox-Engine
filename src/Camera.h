@@ -5,78 +5,88 @@ using namespace DirectX;
 
 struct CameraBuffer
 {
-    XMMATRIX viewProjMatrix;
     XMFLOAT3 pos;
-    float padding;
+    float Znear;
+    XMFLOAT3 forward;
+    float Zfar;
+    XMFLOAT3 right;
+    float fov;
 };
 
 struct Camera
 {
-    XMMATRIX transform{};
-    XMMATRIX viewProjMatrix{};
+    XMFLOAT3 pos{};
+    XMFLOAT3 right{};
+    XMFLOAT3 up{};
+    XMFLOAT3 forward{};
 
-    float fov, aspectRatio, nearPlane, farPlane;
+    float fov, aspectRatio, Znear, Zfar, speed = 0.05f;
 
     Camera() = default;
-    Camera(const XMFLOAT3& position, const XMFLOAT3& direction, const XMFLOAT3& up,
-           float fov, float aspectRatio, float nearPlane, float farPlane)
-           : fov(fov), aspectRatio(aspectRatio), nearPlane(nearPlane), farPlane(farPlane)
+    Camera(const XMFLOAT3& position, const XMFLOAT3& direction, const XMFLOAT3& upVec,
+           float fov, float aspectRatio, float Znear, float Zfar)
+            : pos(position), forward(direction), up(upVec), fov(fov), aspectRatio(aspectRatio), Znear(Znear), Zfar(Zfar)
     {
-        XMVECTOR pos = XMLoadFloat3(&position);
-        XMVECTOR dir = XMLoadFloat3(&direction);
+        XMVECTOR dir = XMLoadFloat3(&forward);
+        XMVECTOR upVecV = XMLoadFloat3(&up);
+        XMVECTOR rightV = XMVector3Cross(upVecV, dir);
+        upVecV = XMVector3Cross(dir, rightV);
+
+        dir = XMVector3Normalize(dir);
+        rightV = XMVector3Normalize(rightV);
+        upVecV = XMVector3Normalize(upVecV);
+
+        XMStoreFloat3(&forward, dir);
+        XMStoreFloat3(&right, rightV);
+        XMStoreFloat3(&up, upVecV);
+    }
+
+    XMVECTOR getPosVec() const
+    {
+        return XMLoadFloat3(&pos);
+    }
+
+    XMVECTOR getForwardVec() const
+    {
+        return XMLoadFloat3(&forward);
+    }
+
+    XMVECTOR getUpVec() const
+    {
+        return XMLoadFloat3(&up);
+    }
+
+    XMVECTOR getRightVec() const
+    {
+        return XMLoadFloat3(&right);
+    }
+
+    void rotate(const XMVECTOR& axis, float angle)
+    {
+        XMMATRIX rotationMatrix = XMMatrixRotationAxis(axis, angle);
+
+        XMVECTOR forwardVec = XMLoadFloat3(&forward);
+        XMVECTOR rightVec = XMLoadFloat3(&right);
         XMVECTOR upVec = XMLoadFloat3(&up);
 
-        transform = XMMatrixLookAtLH(pos, dir, upVec);
+        forwardVec = XMVector3TransformNormal(forwardVec, rotationMatrix);
+        rightVec = XMVector3TransformNormal(rightVec, rotationMatrix);
+        upVec = XMVector3TransformNormal(upVec, rotationMatrix);
 
-        computeViewProj();
+        XMStoreFloat3(&forward, forwardVec);
+        XMStoreFloat3(&right, rightVec);
+        XMStoreFloat3(&up, upVec);
     }
 
-    void computeViewProj()
+    void move(const XMVECTOR& direction)
     {
-        XMMATRIX viewMatrix = XMMatrixInverse(nullptr, transform);
-        XMMATRIX projMatrix = XMMatrixPerspectiveFovLH(fov, aspectRatio, nearPlane, farPlane);
-        viewProjMatrix = XMMatrixMultiply(viewMatrix, projMatrix);
+        XMVECTOR posVec = XMLoadFloat3(&pos);
+        posVec = XMVectorAdd(posVec, XMVectorScale(direction, speed * 10));
+        XMStoreFloat3(&pos, posVec);
     }
 
-    XMFLOAT3 getPos() const
+    CameraBuffer getCameraBuffer()
     {
-        XMFLOAT3 pos;
-        XMStoreFloat3(&pos, transform.r[3]);
-        return pos;
-    }
-
-    XMFLOAT3 getForward() const
-    {
-        XMFLOAT3 forward;
-        XMStoreFloat3(&forward, XMVector3Normalize(transform.r[2]));
-        return forward;
-    }
-
-    XMFLOAT3 getUp() const
-    {
-        XMFLOAT3 up;
-        XMStoreFloat3(&up, XMVector3Normalize(transform.r[1]));
-        return up;
-    }
-
-    XMFLOAT3 getRight() const
-    {
-        XMFLOAT3 right;
-        XMStoreFloat3(&right, XMVector3Normalize(transform.r[0]));
-        return right;
-    }
-
-    void rotate(const XMFLOAT3& axis, float angle)
-    {
-        XMVECTOR axisVec = XMLoadFloat3(&axis);
-        XMMATRIX rotationMatrix = XMMatrixRotationAxis(axisVec, angle);
-        transform = XMMatrixMultiply(rotationMatrix, transform);
-    }
-
-    void move(const XMFLOAT3& direction)
-    {
-        XMVECTOR directionVec = XMLoadFloat3(&direction);
-        XMMATRIX translationMatrix = XMMatrixTranslationFromVector(directionVec);
-        transform = XMMatrixMultiply(transform, translationMatrix);
+        return {pos, Znear, forward, Zfar, right, fov};
     }
 };

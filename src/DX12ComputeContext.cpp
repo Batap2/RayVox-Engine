@@ -3,6 +3,40 @@
 
 #include <filesystem>
 
+bool DX12ComputeContext::setTearingFlag()
+{
+    if(useVSync)
+    {
+        return false;
+    }
+
+    BOOL allowTearing = FALSE;
+
+    // Rather than create the DXGI 1.5 factory interface directly, we create the
+    // DXGI 1.4 interface and query for the 1.5 interface. This is to enable the
+    // graphics debugging tools which will not support the 1.5 factory interface
+    // until a future update.
+    ComPtr<IDXGIFactory4> factory4;
+    if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory4))))
+    {
+        ComPtr<IDXGIFactory5> factory5;
+        if (SUCCEEDED(factory4.As(&factory5)))
+        {
+            if (FAILED(factory5->CheckFeatureSupport(
+                    DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+                    &allowTearing, sizeof(allowTearing))))
+            {
+                allowTearing = FALSE;
+            }
+        }
+    }
+
+    if(allowTearing == TRUE)
+        tearingFlag = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+
+    return allowTearing == TRUE;
+}
+
 HRESULT DX12ComputeContext::CompileShaderFromFile(const std::wstring &filename, const std::string &entryPoint,
                                            const std::string &target, ComPtr<ID3DBlob> &shaderBlob)
 {
@@ -73,7 +107,7 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
 
     const D3D12_DESCRIPTOR_HEAP_DESC descriptor_heap_desc{
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-            1,
+            2,
             D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
     };
     ThrowIfFailed( device->CreateDescriptorHeap(&descriptor_heap_desc, IID_PPV_ARGS(&descriptor_heap)));
@@ -109,7 +143,7 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
     }
 
 
-
+    setTearingFlag();
 
     // Factory to create swapchains etc
     ThrowIfFailed( CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&dxgi_factory)));
@@ -125,7 +159,7 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
             DXGI_SCALING_STRETCH,
             DXGI_SWAP_EFFECT_FLIP_DISCARD,
             DXGI_ALPHA_MODE_UNSPECIFIED,
-            0
+            tearingFlag
     };
 // Create and upgrade swapchain to our version(ComPtr<IDXGISwapChain4> swapchain)
     ComPtr<IDXGISwapChain1> swapchain_tier_dx12;
@@ -145,41 +179,6 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
         ThrowIfFailed( swapchain_buffers[i]->SetName(L"swapchain_buffer"));
     }
 
-
-
-    std::wstring shader_dir;
-    shader_dir = std::filesystem::current_path().filename() == "bin" ? L"../src/Shaders" : L"src/Shaders";
-
-// Shader and its layout
-    ComPtr<ID3DBlob> computeShaderBlob;
-    ThrowIfFailed(CompileShaderFromFile(shader_dir + L"/ComputeShader.hlsl", "main", "cs_5_0", computeShaderBlob));
-
-    {
-        // Description des éléments de la signature racine
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // Un UAV à l'emplacement 0
-        //ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-
-        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
-        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
-        //rootParameters[1].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_ALL);
-
-        // Définir les flags de la signature racine
-        D3D12_ROOT_SIGNATURE_FLAGS computeRootSignatureFlags =
-                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-        // Créer la signature racine
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
-        computeRootSignatureDesc.Init_1_1(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, computeRootSignatureFlags);
-
-        ComPtr<ID3DBlob> signature;
-        ComPtr<ID3DBlob> error;
-
-        ThrowIfFailed(D3D12SerializeVersionedRootSignature(&computeRootSignatureDesc, &signature, &error));
-
-        ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&root_signature)));
-    }
-
     // Retrieve swapchain buffer description and create identical resource but with UAV allowed, so compute shader could write to it
     auto buffer_desc = swapchain_buffers[0]->GetDesc();
     buffer_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -197,6 +196,49 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
     *  using first handle/descriptor in the heap as currently we dont have any other resources
     */
     device->CreateUnorderedAccessView(framebuffer.Get(), nullptr, nullptr, descriptor_heap->GetCPUDescriptorHandleForHeapStart());
+    ++currentlyInitDescriptor;
+
+    camera = Camera({0,0,-10},{0,0,1},{0,1,0},
+                    80, (float)width/(float)height, 0.1, 100);
+
+    CameraBuffer cameraBufferData = camera.getCameraBuffer();
+    cameraBuffer.createOrUpdateConstantBuffer(device.Get(), command_list.Get(), cameraBufferData,
+                                              descriptor_heap.Get(), currentlyInitDescriptor);
+
+    std::wstring shader_dir;
+    shader_dir = std::filesystem::current_path().filename() == "bin" ? L"../src/Shaders" : L"src/Shaders";
+
+// Shader and its layout
+    ComPtr<ID3DBlob> computeShaderBlob;
+    ThrowIfFailed(CompileShaderFromFile(shader_dir + L"/ComputeShader.hlsl", "main", "cs_5_0", computeShaderBlob));
+
+    {
+        // Description des éléments de la signature racine
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // Un UAV à l'emplacement 0
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+
+        CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[1].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_ALL);
+
+        // Définir les flags de la signature racine
+        D3D12_ROOT_SIGNATURE_FLAGS computeRootSignatureFlags =
+                D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+        // Créer la signature racine
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+        computeRootSignatureDesc.Init_1_1(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, computeRootSignatureFlags);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+
+        ThrowIfFailed(D3D12SerializeVersionedRootSignature(&computeRootSignatureDesc, &signature, &error));
+
+        ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&root_signature)));
+    }
+
+
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC pso_desc = {};
     pso_desc.pRootSignature = root_signature.Get();
@@ -204,11 +246,7 @@ void DX12ComputeContext::init(HWND hWnd, uint32_t clientWidth, uint32_t clientHe
     pso_desc.CS.pShaderBytecode = computeShaderBlob->GetBufferPointer();
     ThrowIfFailed( device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&pso)));
 
-    camera = Camera({0,1,0},{0,0,0},{0,1,0},
-                    80, (float)width/(float)height, 0.1, 100);
 
-    CameraBuffer cameraBufferData = {camera.viewProjMatrix, camera.getPos(), 0};
-    //cameraBuffer.createOrUpdateConstantBuffer(device.Get(), command_list.Get(), cameraBufferData, descriptor_heap.Get());
 
     isInitialized = true;
 }
@@ -228,8 +266,10 @@ void DX12ComputeContext::render()
     command_list->SetComputeRootDescriptorTable(0, uavHandle);
 
     // Set the root descriptor table for the CBV (at slot 1)
-    //CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(descriptor_heap->GetGPUDescriptorHandleForHeapStart(), 1, device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-    //command_list->SetComputeRootDescriptorTable(1, cbvHandle);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(descriptor_heap->GetGPUDescriptorHandleForHeapStart(), 1, device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+    command_list->SetComputeRootDescriptorTable(1, cbvHandle);
+
+
 
     command_list->Dispatch(threadGroupCountX, threadGroupCountY, threadGroupCountZ);
 
@@ -274,7 +314,7 @@ void DX12ComputeContext::render()
     ThrowIfFailed( command_list->Reset(command_allocator.Get(), nullptr));
 
 
-    swapchain->Present(1, 0);
+    swapchain->Present(useVSync, tearingFlag);
 }
 
 void DX12ComputeContext::flush()
@@ -296,4 +336,10 @@ void DX12ComputeContext::flush()
     }
     swapchain.Reset();
     device.Reset();
+}
+
+void DX12ComputeContext::computeAndUploadCameraBuffer() {
+    CameraBuffer cameraBufferData = camera.getCameraBuffer();
+    cameraBuffer.createOrUpdateConstantBuffer(device.Get(), command_list.Get(), cameraBufferData,
+                                              descriptor_heap.Get(), currentlyInitDescriptor);
 }

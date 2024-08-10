@@ -7,6 +7,8 @@
 
 #include "AssertUtils.h"
 
+#define MYICON 101
+
 namespace App
 {
     HWND createWindow(const wchar_t* windowClassName, HINSTANCE hInst,
@@ -40,6 +42,14 @@ namespace App
         );
 
         assert(hWnd && "Failed to create window");
+
+        HICON hIcon = LoadIcon(hInst, MAKEINTRESOURCE(MYICON));
+        if (hIcon)
+        {
+            // Définir l'icône pour la fenêtre
+            SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+            SendMessage(hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+        }
 
         return hWnd;
     }
@@ -149,6 +159,7 @@ namespace App
 
             frameCounter = 0;
             elapsedSeconds = 0.0;
+
         }
     }
 
@@ -157,8 +168,21 @@ namespace App
     {
         if ( dx_cctx.isInitialized )
         {
+
+            inputManager.manageInput(message, wParam, lParam);
+            int centerX = (windowRect.left + windowRect.right) / 2;
+            int centerY = (windowRect.top + windowRect.bottom) / 2;
+
             switch (message)
             {
+                case WM_INPUT:
+                    if(isWindowFocused)
+                    {
+                        SetCursorPos(centerX, centerY);
+                        inputManager.ProcessRawInput(lParam);
+                    }
+                break;
+
                 case WM_PAINT:
                     Update();
                     dx_cctx.render();
@@ -170,9 +194,6 @@ namespace App
 
                     switch (wParam)
                     {
-                        case 'V':
-                            dx_cctx.useVSync = !dx_cctx.useVSync;
-                            break;
                         case VK_ESCAPE:
                             ::PostQuitMessage(0);
                             break;
@@ -201,7 +222,13 @@ namespace App
 
                     Resize(width, height);
                 }
-                    break;
+                break;
+                case WM_SETFOCUS:
+                    isWindowFocused = true;
+                break;
+                case WM_KILLFOCUS:
+                    isWindowFocused = false;
+                break;
                 case WM_DESTROY:
                 case WM_CLOSE:
                     ::PostQuitMessage(0);
@@ -257,6 +284,22 @@ namespace App
         std::ios::sync_with_stdio();
     }
 
+    void RegisterRawInputDevices(HWND hwnd)
+    {
+        RAWINPUTDEVICE rid[1];
+
+        // Enregistrer les données de la souris
+        rid[0].usUsagePage = 0x01; // Page de périphérique générique
+        rid[0].usUsage = 0x02;     // Usage : souris
+        rid[0].dwFlags = RIDEV_INPUTSINK; // Recevoir les entrées même lorsque la fenêtre est inactive
+        rid[0].hwndTarget = hwnd;
+
+        if (!RegisterRawInputDevices(rid, 1, sizeof(rid[0])))
+        {
+            std::cerr << "Failed to register raw input devices." << std::endl;
+        }
+    }
+
     void InitApp(HINSTANCE hInstance)
     {
 
@@ -279,7 +322,12 @@ namespace App
         // Initialize the global window rect variable.
         ::GetWindowRect(hWnd, &windowRect);
 
+        ShowCursor(FALSE);
+
+        RegisterRawInputDevices(hWnd);
+
         dx_cctx.init(hWnd, clientWidth, clientHeight);
+        inputManager.ctx = &dx_cctx;
 
         ::ShowWindow(hWnd, SW_SHOW);
     }

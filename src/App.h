@@ -11,6 +11,7 @@ using namespace Microsoft::WRL;
 #include <cstdint>
 
 #include "DX12ComputeContext.h"
+#include "InputManager.h"
 
 namespace App
 {
@@ -20,6 +21,9 @@ namespace App
     inline uint32_t clientHeight = 800;
 
     inline DX12ComputeContext dx_cctx;
+    inline InputManager inputManager;
+
+    inline bool isWindowFocused = false;
 
     void RedirectIOToConsole();
 
@@ -35,6 +39,8 @@ namespace App
     LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
     void RegisterWindowClass( HINSTANCE hInst, const wchar_t* windowClassName );
+
+    void RegisterRawInputDevices(HWND hwnd);
 
     void InitApp(HINSTANCE hInstance);
 }

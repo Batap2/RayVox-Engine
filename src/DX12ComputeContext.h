@@ -9,6 +9,10 @@ struct DX12ComputeContext
     uint32_t threadGroupSizeX = 8;
     uint32_t threadGroupSizeY = 8;
 
+    bool useVSync = true;
+    UINT tearingFlag = 0;
+    bool fullscreen = false;
+
     // DXGI
     ComPtr<IDXGIFactory4> dxgi_factory;
     ComPtr<IDXGISwapChain4> swapchain;
@@ -39,15 +43,20 @@ struct DX12ComputeContext
     // Resource descriptors(views)
     ComPtr<ID3D12DescriptorHeap> descriptor_heap;
 
-    bool isInitialized, useVSync, fullscreen;
+    unsigned int currentlyInitDescriptor = 0;
+
+    bool isInitialized;
 
     uint32_t width, height;
 
     uint32_t threadGroupCountX, threadGroupCountY, threadGroupCountZ;
 
     Camera camera;
-
     DX12Resource cameraBuffer;
+
+    void computeAndUploadCameraBuffer();
+
+    bool setTearingFlag();
 
     HRESULT CompileShaderFromFile(const std::wstring &filename, const std::string &entryPoint,
                                                       const std::string &target, ComPtr<ID3DBlob> &shaderBlob);

@@ -13,7 +13,8 @@ struct DX12Resource
     void createOrUpdateConstantBuffer(ID3D12Device* device,
                                                     ID3D12GraphicsCommandList* commandList,
                                                     const T& data,
-                                                    ID3D12DescriptorHeap* descriptorHeap)
+                                                    ID3D12DescriptorHeap* descriptorHeap,
+                                                    unsigned int &currentlyInitDescriptor)
     {
         //TODO : check si sizeof(T) est un multiple de ... pour le padding
         const UINT64 bufferSize = (sizeof(T) + 255) & ~255; // Align buffer size to 256 bytes
@@ -47,7 +48,13 @@ struct DX12Resource
                     IID_PPV_ARGS(&resource)
             ));
 
-            cpuDescriptorHandle = descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+
+            cpuDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+                    descriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                    currentlyInitDescriptor++,
+                    device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
+            );
+
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
             cbvDesc.BufferLocation = resource->GetGPUVirtualAddress();
             cbvDesc.SizeInBytes = bufferSize;

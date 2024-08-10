@@ -1,14 +1,17 @@
 RWTexture2D<float4> framebuffer : register(u0);
 
-// cbuffer CameraBuffer : register(b0)
-// {
-//     struct
-//     {
-//         float4x4 viewproj;
-//         float3 pos;
-//         float padding;
-//     }cameraBuffer;
-// };
+cbuffer CameraBuffer : register(b0)
+{
+    struct CameraBuffer
+    {
+        float3 pos;
+        float Znear;
+        float3 forward;
+        float Zfar;
+        float3 right;
+        float fov;
+    }cameraBuffer;
+};
 
 struct Ray
 {
@@ -30,18 +33,26 @@ struct Sphere
     float radius;
 };
 
-Ray GenerateRay(uint2 pixelCoord, uint2 screenSize, float4x4 cameraViewProjMatrix)
+Ray GenerateRay(float2 pixelPos, float2 screenSize, float3 cameraPos,
+                float3 forward, float3 right, float fov)
 {
-    float2 ndc = float2(
-        (float)pixelCoord.x / screenSize.x * 2.0 - 1.0,
-        (float)pixelCoord.y / screenSize.y * 2.0 - 1.0
-    );
+    float aspectRatio = screenSize.x / screenSize.y;
 
-    float4 worldPos = mul(float4(ndc, 0.0, 1.0), cameraViewProjMatrix);
+    float2 ndc = (pixelPos / screenSize) * 2.0f - 1.0f;
 
+    ndc.x *= aspectRatio;
+
+    float tanFov = tan(radians(fov) * 0.5f);
+
+    float3 up = cross(forward, right);
+
+    // Camera space coordinates
+    float3 cameraSpaceDir = normalize(ndc.x * right * tanFov + ndc.y * up * tanFov + forward);
+
+    // Construct the ray
     Ray ray;
-    ray.origin = cameraViewProjMatrix[3].xyz;
-    ray.direction = normalize(worldPos.xyz - ray.origin);
+    ray.origin = cameraPos;
+    ray.direction = cameraSpaceDir;
 
     return ray;
 }
@@ -93,9 +104,8 @@ void main(uint3 dt_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID)
     sphere.center = float3(0,0,0);
     sphere.radius = 1;
 
-    Ray ray;
-    ray.origin = float3(float(dt_id.x)/400 - 1, float(dt_id.y)/400 - 1, -10);
-    ray.direction = float3(0,0,1);
+    Ray ray = GenerateRay(screen_coord, uint2(width, height), cameraBuffer.pos,
+    cameraBuffer.forward, cameraBuffer.right, cameraBuffer.fov);
 
     Hit h = IntersectRaySphere(ray, sphere);
 
