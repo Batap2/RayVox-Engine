@@ -10,9 +10,6 @@ project ("RayVox-Engine")
 
 set(CMAKE_CXX_STANDARD 20)
 
-# Définir les drapeaux de compilation
-add_compile_options(/WX)
-
 
 # Définir le répertoire des sources et include
 set(source_dir "${PROJECT_SOURCE_DIR}/src")
@@ -36,6 +33,7 @@ add_executable(RayVox_Engine WIN32 ${source_files}
         src/CommandQueue.cpp
         src/InputManager.cpp
         resources.rc
+        src/VoxelDataStructs.cpp
 )
 
 target_link_libraries(RayVox_Engine d3d12.lib dxgi.lib dxguid.lib D3DCompiler.lib)
@@ -45,6 +43,13 @@ target_link_libraries(RayVox_Engine d3d12.lib dxgi.lib dxguid.lib D3DCompiler.li
 target_compile_definitions(RayVox_Engine
         PRIVATE
         $<$<CONFIG:Debug>:_DEBUG>
+)
+
+# Définir les drapeaux de compilation
+add_compile_options(/WX)
+target_compile_options(RayVox_Engine PRIVATE
+        $<$<CONFIG:Release>:/O2>
+        $<$<CONFIG:RelWithDebInfo>:/O2>
 )
 
 #target_link_directories(RayVox_Engine PUBLIC ${PROJECT_SOURCE_DIR}/include)

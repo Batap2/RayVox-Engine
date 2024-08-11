@@ -17,8 +17,8 @@ namespace App
 {
     inline HWND hWnd;
     inline RECT windowRect;
-    inline uint32_t clientWidth = 800;
-    inline uint32_t clientHeight = 800;
+    inline uint32_t clientWidth = 1024;
+    inline uint32_t clientHeight = 1024;
 
     inline DX12ComputeContext dx_cctx;
     inline InputManager inputManager;
