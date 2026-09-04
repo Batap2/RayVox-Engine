@@ -2,7 +2,6 @@
 #include "EntityDescSerializer.h"
 
 #include "Components/Hierarchy_C.h"
-#include "Components/Kind_C.h"
 #include "Components/Name_C.h"
 #include "Engine.h"
 #include "Instance/EntityFactory.h"
@@ -92,9 +91,6 @@ void EntitySerializer::save(World& world, const Engine& ctx, const std::string& 
         auto* nc = reg.try_get<Name_C>(e);
         ej["name"] = nc ? nc->name_ : std::string{};
 
-        auto* k = reg.try_get<Kind_C>(e);
-        ej["kind"] = spawnableFor(k ? k->value : EntityKind::Empty).id;
-
         ej["parent"] = nlohmann::json(nullptr);
         if (auto* hc = reg.try_get<Hierarchy_C>(e); hc && hc->parent != entt::null)
             if (auto it = indexMap.find(entt::to_integral(hc->parent)); it != indexMap.end())
@@ -122,7 +118,6 @@ void EntitySerializer::save(const std::vector<EntityDesc>& entities, const std::
     {
         nlohmann::json ej;
         ej["name"] = desc.name;
-        ej["kind"] = desc.kind;
         ej["parent"] =
             desc.parentIndex >= 0 ? nlohmann::json(desc.parentIndex) : nlohmann::json(nullptr);
 
@@ -164,9 +159,9 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
     {
         const auto& compsJ = ej.contains("components") ? ej["components"] : nlohmann::json::array();
 
-        const std::string kind = ej.value("kind", "empty");
-
-        EntityHandle h = factory.create(reg, spawnableFor(kind));
+        // The components carry everything: a marker component puts the entity
+        // in its GPU pool as it is emplaced.
+        EntityHandle h = factory.create(reg, Spawnables[0]);
 
         if (auto* nc = reg.try_get<Name_C>(h.entity_))
             nc->name_ = ej.value("name", "");

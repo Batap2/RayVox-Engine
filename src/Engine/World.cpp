@@ -19,7 +19,7 @@ World::World(Engine& ctx) : ctx_(&ctx)
 {
     systems_ = std::make_unique<Systems>();
     instanceManager_ = std::make_unique<GPUInstanceManager>(ctx);
-    entityFactory_ = std::make_unique<EntityFactory>(*instanceManager_);
+    entityFactory_ = std::make_unique<EntityFactory>();
 
     // Empty scene, never a null one. The editor replaces it with its own subclass.
     scene_ = std::make_unique<Scene>(*instanceManager_);

@@ -218,7 +218,6 @@ static void processNode(const aiNode* node, const aiScene* scene, const fs::path
         if (writeBmesh(merged, bmeshPath.string()))
             result.bmeshPaths.push_back(bmeshPath.string());
 
-        desc.kind = "mesh";
         desc.components.push_back(MeshDesc{fs::relative(bmeshPath, baseDir).generic_string()});
 
         MaterialsDesc matDesc;

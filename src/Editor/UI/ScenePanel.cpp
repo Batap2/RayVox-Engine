@@ -1,7 +1,6 @@
 #include "ScenePanel.h"
 
 #include "Components/Hierarchy_C.h"
-#include "Components/Kind_C.h"
 #include "Components/Name_C.h"
 #include "Instance/EntityFactory.h"
 #include "Scene.h"
@@ -19,8 +18,7 @@ void ScenePanel::drawEntityNode(entt::registry& reg, entt::entity e,
 {
     EntityHandle h = {&reg, e};
 
-    auto* kindC = reg.try_get<Kind_C>(e);
-    const char* icon = spawnableFor(kindC ? kindC->value : EntityKind::Empty).icon;
+    const char* icon = spawnableFor(reg, e).icon;
 
     auto* hc = reg.try_get<Hierarchy_C>(e);
     bool hasChildren = hc && hc->firstChild != entt::null;

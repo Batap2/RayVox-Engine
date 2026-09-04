@@ -17,7 +17,7 @@ namespace batap
 {
 TestScene::TestScene(World& world) : Scene(*world.instanceManager_)
 {
-    camera_ = world.entityFactory_->create(registry_, spawnableFor(EntityKind::Camera));
+    camera_ = world.entityFactory_->create(registry_, spawnableFor("camera"));
     auto& camController = camera_.emplace<FreeCamController_C>();
     camController.controlled_ = true;
     camController.requireRightMouseButton_ = true;

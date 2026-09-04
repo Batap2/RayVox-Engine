@@ -13,7 +13,6 @@
 #include "EigenTypes.h"
 #include "Engine.h"
 #include "Handles.h"
-#include "Instance/EntityKind.h"
 #include "Renderer/SkyIrradiance.h"
 #include "Shaders/ShaderInterop.h"
 
@@ -46,7 +45,8 @@ struct InstanceFill;
 // ----------- Instances :
 
 // Derived rather than aliased so an instance can override InitialCapacity and
-// PoolName. It must also declare `Binding`, its frame-set slot, and may declare
+// PoolName. It must also declare `Binding`, its frame-set slot, and `Marker`,
+// the component whose presence puts an entity in the pool. It may declare
 // `CountField` to have its size pushed to the shaders.
 template <class GPUDataT, ComponentFlag UsedFlags>
 struct GPUInstanceBase
@@ -68,6 +68,7 @@ struct StaticMeshInstance
     static constexpr size_t InitialCapacity = 256;
     static constexpr const char* PoolName = "StaticMeshInstancePool";
     static constexpr uint32_t Binding = InstancesBinding;
+    using Marker = Mesh_C;
 };
 
 struct CameraInstance
@@ -76,6 +77,7 @@ struct CameraInstance
     static constexpr size_t InitialCapacity = 1;
     static constexpr const char* PoolName = "CameraInstancePool";
     static constexpr uint32_t Binding = CamerasBinding;
+    using Marker = Camera_C;
 };
 
 struct PointLightInstance
@@ -84,6 +86,7 @@ struct PointLightInstance
     static constexpr size_t InitialCapacity = 32;
     static constexpr const char* PoolName = "pointLightInstancePool";
     static constexpr uint32_t Binding = PointLightsBinding;
+    using Marker = PointLight_C;
     static constexpr uint32_t DrawPush::* CountField = &DrawPush::pointLightCount_;
 };
 
@@ -92,6 +95,7 @@ struct SkyboxInstance : GPUInstanceBase<SkyboxGPUData, ComponentFlag::Skybox>
     static constexpr size_t InitialCapacity = 1;
     static constexpr const char* PoolName = "SkyboxInstancePool";
     static constexpr uint32_t Binding = SkyboxBinding;
+    using Marker = Skybox_C;
 };
 
 // ----------- InstanceFill : how one instance is built from its components
@@ -223,40 +227,30 @@ struct InstanceFill<SkyboxInstance>
     }
 };
 
-// ----------- GPUKinds : which entity kinds own a GPU instance ---------------
+// ----------- GPUInstances : the one list the plumbing reads -----------------
 
-// The one list the plumbing reads: a kind added here gets its pool, its upload
-// pass, its dirty routing and its teardown. A kind absent from it has no GPU
-// mirror, and every visit over it is a no-op.
-template <EntityKind K, class Instance>
-struct GPUKind
-{
-    static constexpr EntityKind kind = K;
-    using InstanceType = Instance;
-};
-
-using GPUKinds = TypeList<GPUKind<EntityKind::StaticMesh, StaticMeshInstance>,
-                          GPUKind<EntityKind::Camera, CameraInstance>,
-                          GPUKind<EntityKind::PointLight, PointLightInstance>,
-                          GPUKind<EntityKind::Skybox, SkyboxInstance>>;
+// An instance added here gets its pool, its upload pass, its dirty routing, its
+// frame set binding and its entt hooks.
+using GPUInstances =
+    TypeList<StaticMeshInstance, CameraInstance, PointLightInstance, SkyboxInstance>;
 
 // A binding nobody writes leaves the shader reading a null buffer, which no
 // driver reports: turn both omission and collision into a build error.
-template <class KindList>
+template <class InstanceList>
 struct FrameSetBindings;
 
-template <class... Ks>
-struct FrameSetBindings<TypeList<Ks...>>
+template <class... Instances>
+struct FrameSetBindings<TypeList<Instances...>>
 {
-    static constexpr uint32_t claimed = ((1u << Ks::InstanceType::Binding) | ...) |
-                                        (1u << MaterialsBinding);
+    static constexpr uint32_t claimed =
+        ((1u << Instances::Binding) | ...) | (1u << MaterialsBinding);
 
-    static_assert(std::popcount(claimed) == sizeof...(Ks) + 1,
+    static_assert(std::popcount(claimed) == sizeof...(Instances) + 1,
                   "two instances claim the same frame set binding");
     static_assert(claimed == (1u << FrameSetBindingCount) - 1u,
                   "a frame set binding has no instance pool behind it");
 };
 
-inline constexpr FrameSetBindings<GPUKinds> frameSetBindings_{};
+inline constexpr FrameSetBindings<GPUInstances> frameSetBindings_{};
 
 }  // namespace batap

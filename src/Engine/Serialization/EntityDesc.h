@@ -42,8 +42,7 @@ using ComponentDesc = std::variant<Transform_C, MeshDesc, MaterialsDesc>;
 struct EntityDesc
 {
     std::string name;
-    std::string kind = "empty";  // "mesh" | "pointLight" | "camera" | "skybox" | "empty"
-    int parentIndex = -1;        // index into the same vector, -1 = root
+    int parentIndex = -1;  // index into the same vector, -1 = root
     std::vector<ComponentDesc> components;
 };
 

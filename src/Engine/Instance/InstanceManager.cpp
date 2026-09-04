@@ -3,8 +3,6 @@
 #include <cstring>
 #include "Components/ComponentFlag.h"
 #include "Components/EntityHandle.h"
-#include "Components/Kind_C.h"
-#include "EntityKind.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/ResourceManager.h"
 #include "instanceDeclaration.h"
@@ -13,6 +11,38 @@ namespace batap
 {
 GPUInstanceManager::GPUInstanceManager(Engine& ctx)
     : resourceManager_(*ctx.renderer_->resourceManager_) {};
+
+// The registry usually outlives the manager, so the hooks must go before the
+// pools they would call into.
+GPUInstanceManager::~GPUInstanceManager()
+{
+    if (!registry_)
+        return;
+
+    pools_.forEach(
+        [&](auto& pool)
+        {
+            using InstanceT = typename std::remove_reference_t<decltype(pool)>::InstanceType;
+            using Marker = typename InstanceT::Marker;
+            registry_->on_construct<Marker>().disconnect(this);
+            registry_->on_destroy<Marker>().disconnect(this);
+        });
+}
+
+void GPUInstanceManager::connectHooks(entt::registry& reg)
+{
+    registry_ = &reg;
+    pools_.forEach(
+        [&](auto& pool)
+        {
+            using InstanceT = typename std::remove_reference_t<decltype(pool)>::InstanceType;
+            using Marker = typename InstanceT::Marker;
+            reg.on_construct<Marker>()
+                .template connect<&GPUInstanceManager::onMarkerCreated<InstanceT>>(*this);
+            reg.on_destroy<Marker>()
+                .template connect<&GPUInstanceManager::onMarkerDestroyed<InstanceT>>(*this);
+        });
+}
 
 void GPUInstanceManager::uploadRemainingFrameDirty(Engine& ctx)
 {
@@ -70,17 +100,13 @@ void GPUInstanceManager::markDirty(const EntityHandle& handle, ComponentFlag com
     if (!any(componentFlag))
         return;
 
-    auto* k = handle.reg_->try_get<Kind_C>(handle.entity_);
-    if (!k)
-        return;
+    forEachPool(
+        [&](auto& pool)
+        {
+            if (!any(componentFlag & pool.instanceUsedComponentFlag_) || !pool.contains(handle))
+                return;
 
-    visitPool(k->value,
-              [&](auto& pool)
-              {
-                  if (!any(componentFlag & pool.instanceUsedComponentFlag_))
-                      return;
-
-                  pool.dirtyInstances_[handle].setAll();
-              });
+            pool.dirtyInstances_[handle].setAll();
+        });
 }
 }  // namespace batap

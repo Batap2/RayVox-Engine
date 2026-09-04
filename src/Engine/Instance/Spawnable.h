@@ -5,7 +5,6 @@
 #include "Components/PointLight_C.h"
 #include "Components/Skybox_C.h"
 #include "Components/Transform_C.h"
-#include "Instance/EntityKind.h"
 #include "UI/IconsMaterialDesign.h"
 
 #include <entt/entt.hpp>
@@ -24,44 +23,48 @@ struct Spawnable
     std::string_view id;
     const char* label;
     const char* icon;
-    EntityKind kind;
+    bool (*matches)(const entt::registry&, entt::entity);
     void (*emplace)(entt::registry&, entt::entity);
 };
 
 inline constexpr Spawnable Spawnables[] = {
-    {"empty", "Entity", ICON_MD_CATEGORY, EntityKind::Empty, nullptr},
+    {"empty", "Entity", ICON_MD_CATEGORY, nullptr, nullptr},
 
-    {"mesh", "Static Mesh", ICON_MD_HVAC, EntityKind::StaticMesh,
+    {"mesh", "Static Mesh", ICON_MD_HVAC,
+     +[](const entt::registry& r, entt::entity e) { return r.all_of<Mesh_C>(e); },
      +[](entt::registry& r, entt::entity e)
      {
          r.emplace<Mesh_C>(e);
          r.emplace<Transform_C>(e);
      }},
 
-    {"camera", "Camera", ICON_MD_VIDEOCAM, EntityKind::Camera,
+    {"camera", "Camera", ICON_MD_VIDEOCAM,
+     +[](const entt::registry& r, entt::entity e) { return r.all_of<Camera_C>(e); },
      +[](entt::registry& r, entt::entity e)
      {
          r.emplace<Camera_C>(e);
          r.emplace<Transform_C>(e);
      }},
 
-    {"pointLight", "Point Light", ICON_MD_LIGHTBULB, EntityKind::PointLight,
+    {"pointLight", "Point Light", ICON_MD_LIGHTBULB,
+     +[](const entt::registry& r, entt::entity e) { return r.all_of<PointLight_C>(e); },
      +[](entt::registry& r, entt::entity e)
      {
          r.emplace<PointLight_C>(e);
          r.emplace<Transform_C>(e);
      }},
 
-    {"skybox", "Skybox", ICON_MD_PANORAMA, EntityKind::Skybox,
+    {"skybox", "Skybox", ICON_MD_PANORAMA,
+     +[](const entt::registry& r, entt::entity e) { return r.all_of<Skybox_C>(e); },
      +[](entt::registry& r, entt::entity e) { r.emplace<Skybox_C>(e); }},
 };
 
 // Both lookups fall back on the empty entity, which is the one entry every
 // caller can always spawn.
-inline const Spawnable& spawnableFor(EntityKind kind)
+inline const Spawnable& spawnableFor(const entt::registry& reg, entt::entity e)
 {
     for (const Spawnable& s : Spawnables)
-        if (s.kind == kind)
+        if (s.matches && s.matches(reg, e))
             return s;
     return Spawnables[0];
 }

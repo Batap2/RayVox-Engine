@@ -4,7 +4,6 @@
 #include "DirtyFlag.h"
 #include "EigenTypes.h"
 #include "Handles.h"
-#include "Instance/EntityKind.h"
 #include "Renderer/EngineConfig.h"
 #include "Renderer/ResourceManager.h"
 #include "instanceDeclaration.h"
@@ -157,6 +156,8 @@ struct FrameInstancePool
         gpuPoolSize_--;
     }
 
+    bool contains(const EntityHandle& e) { return entityToId_.find(e) != entityToId_.end(); }
+
     GPUInstanceID getGPUIndex(const EntityHandle& e)
     {
         if (auto it = entityToId_.find(e); it != entityToId_.end())
@@ -207,13 +208,13 @@ struct FrameInstancePool
     }
 };
 
-// One pool per entry of GPUKinds, addressed by instance type rather than by
-// member name: generic code goes through forEach/visit and never names a pool.
+// One pool per entry of GPUInstances, addressed by instance type rather than by
+// member name: generic code goes through forEach and never names a pool.
 template <class KindList>
 struct InstancePools;
 
-template <class... Ks>
-struct InstancePools<TypeList<Ks...>>
+template <class... Instances>
+struct InstancePools<TypeList<Instances...>>
 {
     // Repeats rm once per kind so the tuple builds each pool in place.
     template <class>
@@ -222,9 +223,9 @@ struct InstancePools<TypeList<Ks...>>
         return rm;
     }
 
-    explicit InstancePools(ResourceManager& rm) : pools_{sameRm<Ks>(rm)...} {}
+    explicit InstancePools(ResourceManager& rm) : pools_{sameRm<Instances>(rm)...} {}
 
-    std::tuple<FrameInstancePool<typename Ks::InstanceType>...> pools_;
+    std::tuple<FrameInstancePool<Instances>...> pools_;
 
     template <class Instance>
     FrameInstancePool<Instance>& get()
@@ -238,36 +239,40 @@ struct InstancePools<TypeList<Ks...>>
         std::apply([&](auto&... p) { (f(p), ...); }, pools_);
     }
 
-    // A kind with no GPU instance matches nothing, so callers need neither a
-    // switch nor a default case.
-    template <class F>
-    void visit(EntityKind kind, F&& f)
-    {
-        std::apply([&](auto&... p)
-                   { ((Ks::kind == kind ? static_cast<void>(f(p)) : void()), ...); }, pools_);
-    }
 };
 
-// Assumes one rendering aspect per entity. True multi-aspect (Mesh + Light on
-// the same entity) would mean a per-component pool model instead, dropping the
-// kind routing.
+// Assumes one rendering aspect per entity: holding two marker components would
+// put an entity in two pools. True multi-aspect would mean a per-component pool
+// model instead.
 struct GPUInstanceManager
 {
     GPUInstanceManager(Engine& ctx);
+    ~GPUInstanceManager();
 
     void uploadRemainingFrameDirty(Engine& ctx);
     void markDirty(const EntityHandle& handle, ComponentFlag componentFlag);
+
+    // Membership follows the marker component: emplacing one anywhere — factory,
+    // deserializer, game code — puts the entity in its pool, and destroying the
+    // component or the entity takes it out.
+    void connectHooks(entt::registry& reg);
+
+    template <class Instance>
+    void onMarkerCreated(entt::registry& reg, entt::entity e)
+    {
+        pool<Instance>().insert(EntityHandle{&reg, e});
+    }
+
+    template <class Instance>
+    void onMarkerDestroyed(entt::registry& reg, entt::entity e)
+    {
+        pool<Instance>().remove(EntityHandle{&reg, e});
+    }
 
     template <class Instance>
     FrameInstancePool<Instance>& pool()
     {
         return pools_.get<Instance>();
-    }
-
-    template <class F>
-    void visitPool(EntityKind kind, F&& f)
-    {
-        pools_.visit(kind, std::forward<F>(f));
     }
 
     template <class F>
@@ -277,6 +282,7 @@ struct GPUInstanceManager
     }
 
     ResourceManager& resourceManager_;
-    InstancePools<GPUKinds> pools_{resourceManager_};
+    entt::registry* registry_ = nullptr;
+    InstancePools<GPUInstances> pools_{resourceManager_};
 };
 }  // namespace batap
