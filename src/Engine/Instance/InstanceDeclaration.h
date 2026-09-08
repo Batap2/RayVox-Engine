@@ -16,7 +16,9 @@
 //
 // Uses is checked: fill() sees only the components it lists, so reading one
 // that is missing from it is a build error rather than a buffer that silently
-// stops updating.
+// stops updating. The head is guaranteed present — the entity is in the pool
+// only while it exists — so in.marker() hands it out by reference; the rest
+// may be absent and come back as pointers through in.get<C>().
 
 #include "Assets/AssetManager.h"
 #include "Assets/Mesh.h"
@@ -52,17 +54,20 @@ struct TypeList
 
 // ----------- what an instance sees of an entity ----------------------------
 
-template <class... Cs>
+template <class Head, class... Rest>
 struct Access
 {
     Engine& ctx;
     const entt::registry& reg;
     entt::entity entity;
 
+    // The marker component, by reference: pool membership *is* its presence.
+    const Head& marker() const { return reg.get<Head>(entity); }
+
     template <class C>
     const C* get() const
     {
-        static_assert((std::is_same_v<C, Cs> || ...),
+        static_assert(std::is_same_v<C, Head> || (std::is_same_v<C, Rest> || ...),
                       "this component is missing from the instance's Uses list — add it "
                       "there, or a change to it would never reach the GPU");
         return reg.try_get<C>(entity);
@@ -147,24 +152,21 @@ struct CameraInstance
 
     static void fill(AccessOf<Uses> in, GPUData& out)
     {
-        auto* cam = in.get<Camera_C>();
-        if (!cam)
-            return;
-
-        out.znear_ = cam->znear_;
-        out.zfar_ = cam->zfar_;
-        out.fov_ = cam->fov_;
+        const Camera_C& cam = in.marker();
+        out.znear_ = cam.znear_;
+        out.zfar_ = cam.zfar_;
+        out.fov_ = cam.fov_;
 
         auto* trans = in.get<Transform_C>();
         if (!trans)
             return;
 
         const auto world = trans->world();
-        store(out.view_, cam->make_view(world));
+        store(out.view_, cam.make_view(world));
 
         const auto frameSize = in.ctx.getFrameSize();
         const auto aspect = static_cast<float>(frameSize.x()) / static_cast<float>(frameSize.y());
-        store(out.proj_, cam->make_proj(aspect));
+        store(out.proj_, cam.make_proj(aspect));
 
         store(out.pos_, world.translation());
         store(out.right_, world.linear().col(0).normalized());
@@ -186,14 +188,12 @@ struct PointLightInstance
         if (auto* trans = in.get<Transform_C>())
             store(out.pos_, trans->world().translation());
 
-        if (auto* light = in.get<PointLight_C>())
-        {
-            store(out.color_, light->color_);
-            out.intensity_ = light->intensity_;
-            out.radius_ = light->radius_;
-            out.falloff_ = light->falloff_;
-            out.castShadows_ = static_cast<uint32_t>(light->castShadows_);
-        }
+        const PointLight_C& light = in.marker();
+        store(out.color_, light.color_);
+        out.intensity_ = light.intensity_;
+        out.radius_ = light.radius_;
+        out.falloff_ = light.falloff_;
+        out.castShadows_ = static_cast<uint32_t>(light.castShadows_);
     }
 };
 
@@ -205,17 +205,15 @@ struct SkyboxInstance
 
     static void fill(AccessOf<Uses> in, GPUData& out)
     {
-        auto* sky = in.get<Skybox_C>();
-        if (!sky)
-            return;
+        const Skybox_C& sky = in.marker();
 
         out.bindlessIndex = InvalidGPUIndex;
         out.mipCount = 1u;
 
         SH9 sh;
-        if (sky->mode_ == Skybox_C::Mode::HDRI && sky->hdri_)
+        if (sky.mode_ == Skybox_C::Mode::HDRI && sky.hdri_)
         {
-            if (auto* tex = in.ctx.assetManager_->get<Texture>(sky->hdri_))
+            if (auto* tex = in.ctx.assetManager_->get<Texture>(sky.hdri_))
             {
                 sh = tex->irradianceSH_;
                 out.bindlessIndex = tex->bindlessIndex_;
@@ -224,18 +222,19 @@ struct SkyboxInstance
         }
         else
         {
-            sh = projectSkyToSH(*sky);
+            sh = projectSkyToSH(sky);
         }
 
-        for (size_t i = 0; i < 9; ++i)
-            store(out.sh[i], sh.c[i] * sky->intensity_);
+        auto outSH = std::span{out.sh};
+        for (size_t i = 0; i < outSH.size(); ++i)
+            store(outSH[i], sh.c[i] * sky.intensity_);
 
-        out.mode = static_cast<uint32_t>(sky->mode_);
-        out.intensity = sky->intensity_;
-        store(out.color1, sky->color1_);
-        store(out.color2, sky->color2_);
-        store(out.color3, sky->color3_);
-        out.horizonWidth = sky->horizonWidth_;
+        out.mode = static_cast<uint32_t>(sky.mode_);
+        out.intensity = sky.intensity_;
+        store(out.color1, sky.color1_);
+        store(out.color2, sky.color2_);
+        store(out.color3, sky.color3_);
+        out.horizonWidth = sky.horizonWidth_;
     }
 };
 

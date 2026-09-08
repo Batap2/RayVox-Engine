@@ -152,9 +152,9 @@ graph LR
 
 **Defines**
 
-- **Used ECS components**: `ComponentFlag UsedComposents`
+- **Used ECS components**: `Uses` (its head is the marker component)
 - **GPU memory layout**: `GPUData`
-- **CPU → GPU fill rules**: `InstancePatch`
+- **CPU → GPU fill rules**: `fill()`
 
 **Constraints**
 
@@ -168,9 +168,8 @@ graph LR
 ```mermaid
 graph LR
     S[Systems] -- "write" --> C[Components]
-    C -- "mark dirty" --> D[DirtyFlag]
-    D --> IM[InstanceManager]
-    IM -- "InstancePatch" --> GD[GPUData]
+    C -- "markDirty(ComponentMask)" --> IM[InstanceManager]
+    IM -- "fill()" --> GD[GPUData]
     GD --> Pool[FrameInstancePool]
     Pool -- "structured buffer" --> GPU[(GPU)]
 ```

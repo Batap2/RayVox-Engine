@@ -1,17 +1,15 @@
 #pragma once
 
 #include "Components/EntityHandle.h"
-#include "DirtyFlag.h"
 #include "EigenTypes.h"
 #include "Handles.h"
+#include "InstanceDeclaration.h"
 #include "Renderer/EngineConfig.h"
 #include "Renderer/ResourceManager.h"
-#include "instanceDeclaration.h"
 
 #include <emhash/hash_table8.hpp>
 #include <entt/entt.hpp>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -53,36 +51,30 @@ namespace batap
 
 struct FrameDirtyFlag
 {
-    std::array<bool, FramesInFlight> dirtyByFrame_ {};
+    static_assert(FramesInFlight <= 8);
 
-    void setAll() { dirtyByFrame_.fill(true); }
+    uint8_t bits_ = 0;
 
-    void clear(size_t frame) { dirtyByFrame_[frame] = false; }
+    void setAll() { bits_ = (uint8_t{1} << FramesInFlight) - 1; }
 
-    bool dirty(size_t frame) const { return dirtyByFrame_[frame]; }
+    void clear(size_t frame) { bits_ &= static_cast<uint8_t>(~(uint8_t{1} << frame)); }
 
-    bool none() const
-    {
-        for (bool f : dirtyByFrame_)
-        {
-            if (f)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    bool dirty(size_t frame) const { return (bits_ >> frame) & 1; }
+
+    bool none() const { return bits_ == 0; }
 };
 
-template <GPUInstance type>
+template <GPUInstance Instance>
 struct FrameInstancePool
 {
-    using InstanceType = type;
+    using InstanceType = Instance;
 
     explicit FrameInstancePool(ResourceManager& rm)
-        : resourceManager_(rm), name_(refl::typeName<type>()), usedComponents_(usedComponentMask<type>())
+        : resourceManager_(rm),
+          name_(refl::typeName<Instance>()),
+          usedComponents_(usedComponentMask<Instance>())
     {
-        gpuPoolCapacity_ = initialCapacityOf<type>();
+        gpuPoolCapacity_ = initialCapacityOf<Instance>();
         name_ += "Pool";
         createGPUResources();
     }
@@ -179,10 +171,10 @@ struct FrameInstancePool
         }
 
         instancePoolHandle_ = resourceManager_.createPerFrameBuffer(
-            gpuPoolCapacity_ * sizeof(typename type::GPUData), name_);
+            gpuPoolCapacity_ * sizeof(typename Instance::GPUData), name_);
     }
 
-    void markAllinstanceDirty()
+    void markAllInstancesDirty()
     {
         dirtyInstances_.clear();
         for (auto&& [handle, _] : entityToId_)
@@ -197,7 +189,7 @@ struct FrameInstancePool
         {
             gpuPoolCapacity_ *= 2;
             createGPUResources();
-            markAllinstanceDirty();
+            markAllInstancesDirty();
             return true;
         }
         return false;

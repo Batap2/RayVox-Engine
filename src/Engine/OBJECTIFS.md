@@ -1,9 +1,10 @@
 # Objectifs
 
-**État (2026-09-02)** : le port Vulkan est fini et mergé sur `main` — un seul
-backend (`Renderer/Vulkan/`), DX12 supprimé. Ce plan reprend la revue
-d'architecture d'août 2026 et l'ancien suivi `TODO.md`, revérifiés ligne à ligne
-contre le code d'aujourd'hui.
+**État (2026-09-08)** : le port Vulkan est fini et mergé sur `main` — un seul
+backend (`Renderer/Vulkan/`), DX12 supprimé. La simplification du pipeline
+composant (§2) est faite pour l'essentiel : voir les cases cochées. Ce plan
+reprend la revue d'architecture d'août 2026 et l'ancien suivi `TODO.md`,
+revérifiés ligne à ligne contre le code d'aujourd'hui.
 
 Fil conducteur inchangé : réduire ce qu'un dev doit toucher pour ajouter un
 composant, et faire du composant de jeu un citoyen de première classe partout
@@ -53,9 +54,8 @@ investissement déjà en place : la réflexion (`BATAP_COMPONENT` +
       save reflété = un composant non enregistré dans le binaire est
       **silencieusement détruit** à la sauvegarde. Conserver le blob JSON tel
       quel et le réémettre. Protège aussi entre versions du moteur.
-- [ ] **Supprimer `RenderInstance_C`** — encore `emplace` dans les quatre
-      factories (`EntityFactory.cpp:50,67,85,100`), jamais lu, et de toute façon
-      périmé dès qu'un swap-remove déplace l'entité dans le pool.
+- [x] **Supprimer `RenderInstance_C`** — fait (`RenderInstanceID_C.h` supprimé,
+      plus aucune référence).
 - [ ] **`GPUInstanceID` par défaut = invalide** — `InstanceManager.h:28` :
       défaut `value = 0` mais `valid()` teste contre `uint32_max`, donc un ID
       défaut pointe le slot 0. Initialiser à max.
@@ -67,39 +67,35 @@ investissement déjà en place : la réflexion (`BATAP_COMPONENT` +
 - [ ] **Supprimer `include/DirectX-Headers`** (3.8 Mo) — reste du backend DX12,
       plus référencé par aucun CMake.
 
-## 2. Simplification du pipeline composant (1-2 jours)
+## 2. Simplification du pipeline composant — FAIT (sept. 2026), reste un item
 
-Objectif final : ajouter un composant GPU-visible = le header du composant,
-un bloc compact dans `instanceDeclaration.h` (struct interop + un `fill` + une
-ligne de déclaration), un bit de `ComponentFlag`. Trois fichiers, zéro plomberie.
+Objectif atteint : ajouter un composant GPU-visible = le header du composant
+(`BATAP_COMPONENT`) + un bloc compact dans `InstanceDeclaration.h` (struct
+interop dans `ShaderInterop.h`, `Uses`, `fill()`, une ligne dans
+`GPUInstances`). Zéro plomberie.
 
-- [ ] **Patches partiels → un `fill()` unique par instance** — les structs GPU
-      font 40-224 octets : ré-uploader la struct entière coûte des miettes de
-      bande passante et supprime `PatchDesc`/`PatchRange`/`byBit` + le risque de
-      désynchronisation offset/layout. Moins de petits `vkCmdCopyBuffer` en prime.
-- [ ] **Pools peuplés par hooks entt** (`on_construct`/`on_update`/`on_destroy`
-      par composant miroir) — la présence du composant *devient* l'appartenance
-      au pool, et une modification hors factory marque dirty. Aujourd'hui aucun
-      hook n'existe : un `emplace<Mesh_C>` hors factory = entité jamais rendue,
-      silencieusement.
-- [ ] **Kind dérivé des composants** — `markDirty` route par
-      `(pool.usedFlags & flag) && pool.contains(handle)` au lieu de `Kind_C`;
-      `destroy` fait un `forEach` (remove est déjà no-op si absent). `EntityKind`,
-      `Kind_C`, `kindName()`, `GPUKinds` et le switch `if (kind == "...")` du load
-      disparaissent. Le load devient : créer l'entité, appliquer les composants
-      reflétés, fin. (Le modèle single-aspect par entité est conservé —
-      assemblage par hiérarchie ; un assert dans le hook « déjà dans un autre
-      pool » garantit l'invariant.)
-- [ ] **Factories → spawnables data-driven** — `createStaticMesh` etc. deviennent
-      des listes de composants (nom affiché + composants à emplacer). Le menu de
-      `ScenePanel` boucle dessus comme l'inspecteur boucle sur
-      `ComponentRegistry::all()`.
+- [x] **Patches partiels → un `fill()` unique par instance** —
+      `PatchDesc`/`PatchRange`/`byBit` supprimés, la struct entière est
+      ré-uploadée.
+- [x] **Pools peuplés par hooks entt** — `on_construct`/`on_destroy` sur le
+      composant marqueur (tête de `Uses`) : la présence du composant *est*
+      l'appartenance au pool. Les modifications passent par
+      `Scene::write<T>`/`markDirty` (pas d'`on_update` — une écriture directe
+      via `reg.get<T>()` n'atteint pas le GPU, contrat assumé).
+- [x] **Kind dérivé des composants** — `markDirty` route par
+      `(changed & pool.usedComponents_) && pool.contains(handle)`. `EntityKind`,
+      `Kind_C`, `ComponentFlag` et le switch du load ont disparu ; le load crée
+      l'entité et applique les composants reflétés, fin.
+- [x] **Factories → spawnables data-driven** — `Spawnable.h` : une table
+      (id, label, icône, composants à emplacer) que `ScenePanel` et le
+      factory bouclent.
 - [ ] **Règle officielle : un composant est un agrégat trivially copyable** —
       `static_assert` à l'enregistrement (il n'existe aujourd'hui que sur les
-      `GPUData`, `instanceDeclaration.h:89`). C'est la contrainte qui rend
-      possibles à la fois les pools GPU simples et le hot reload memcpy (§5).
-- [ ] `ComponentFlag` reste manuel (une ligne d'enum) — l'auto-dériver coûterait
-      la constexpr-ness (`UsedComposents`, tables) pour un gain nul.
+      `GPUData`, concept `GPUInstance` dans `InstanceDeclaration.h`). C'est la
+      contrainte qui rend possibles à la fois les pools GPU simples et le hot
+      reload memcpy (§5).
+- ~~`ComponentFlag` reste manuel~~ — obsolète : les bits (`ComponentMask`) sont
+      assignés par le `ComponentRegistry` à l'init statique, plus d'enum du tout.
 
 ## 3. Éditeur en bibliothèque (le modèle Unity/UE, version statique)
 

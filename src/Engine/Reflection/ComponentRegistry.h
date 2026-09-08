@@ -195,16 +195,23 @@ struct MemberPtr<M C::*>
     using Owner = C;
     using Type = M;
 };
+
+// offsetof for a member pointer — measured on a probe instance because the
+// components are not standard-layout enough for the macro.
+template <auto Member>
+size_t memberOffset()
+{
+    using C = typename MemberPtr<decltype(Member)>::Owner;
+    C probe{};
+    return size_t(reinterpret_cast<const char*>(std::addressof(probe.*Member)) -
+                  reinterpret_cast<const char*>(std::addressof(probe)));
+}
 }  // namespace detail
 
 template <auto Member>
 FieldOverride fieldMeta(FieldMeta m)
 {
-    using C = typename detail::MemberPtr<decltype(Member)>::Owner;
-    C probe{};
-    const auto offset = size_t(reinterpret_cast<const char*>(std::addressof(probe.*Member)) -
-                               reinterpret_cast<const char*>(std::addressof(probe)));
-    return {offset, m};
+    return {detail::memberOffset<Member>(), m};
 }
 
 // --- manual registration (non-aggregates) --------------------------------
@@ -217,12 +224,8 @@ FieldOverride fieldMeta(FieldMeta m)
 template <auto Member>
 Field field(std::string name, FieldMeta m = {})
 {
-    using C = typename detail::MemberPtr<decltype(Member)>::Owner;
     using M = typename detail::MemberPtr<decltype(Member)>::Type;
-    C probe{};
-    const auto offset = size_t(reinterpret_cast<const char*>(std::addressof(probe.*Member)) -
-                               reinterpret_cast<const char*>(std::addressof(probe)));
-    return Field{std::move(name), fieldTypeFor<M>(), offset, m};
+    return Field{std::move(name), fieldTypeFor<M>(), detail::memberOffset<Member>(), m};
 }
 
 template <class T>

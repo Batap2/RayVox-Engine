@@ -34,7 +34,6 @@ void InputManager::feed(MouseEvent e)
                 if (!MouseButtonsDown.at(btn))
                     MouseButtonsPressed[btn] = true;
                 MouseButtonsDown[btn] = true;
-                std::cout << "Mclick " << std::to_string(btn) << "\n";
             }
             else
             {
@@ -46,7 +45,6 @@ void InputManager::feed(MouseEvent e)
         case MouseEvent::Type::Move:
             MouseDeltaAccumulated += e.Delta;
             MousePosition = e.ScreenPosition;
-            std::cout << MousePosition.x() << " " << MousePosition.y() << "\n";
             break;
         case MouseEvent::Type::Wheel:
             MouseWheelAccumulated += e.Wheel;

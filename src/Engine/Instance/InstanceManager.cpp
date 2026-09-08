@@ -4,7 +4,7 @@
 #include "Components/EntityHandle.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/ResourceManager.h"
-#include "instanceDeclaration.h"
+#include "InstanceDeclaration.h"
 
 namespace batap
 {
