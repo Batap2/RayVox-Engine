@@ -14,10 +14,9 @@
 namespace batap
 {
 
-// One line per spawnable entity: what the scene menu offers, what a scene file
-// writes as "kind", and which components the entity is born with. The factory,
-// the serializer and the scene panel all read this table instead of naming a
-// kind each.
+// One line per spawnable entity: what the scene menu offers and which
+// components the entity is born with. The factory and the scene panel read
+// this table instead of naming a kind each.
 struct Spawnable
 {
     std::string_view id;
@@ -27,36 +26,29 @@ struct Spawnable
     void (*emplace)(entt::registry&, entt::entity);
 };
 
+// The head component identifies the entity — it is the one an instance pool
+// keys on — and the rest come along. The two callbacks follow from the list;
+// the id is spelled out, not derived from Head's type name, so a class rename
+// cannot silently change what spawnableFor("camera") looks up.
+template <class Head, class... Rest>
+constexpr Spawnable spawnable(std::string_view id, const char* label, const char* icon)
+{
+    return {id, label, icon,
+            +[](const entt::registry& r, entt::entity e) { return r.all_of<Head>(e); },
+            +[](entt::registry& r, entt::entity e)
+            {
+                r.emplace<Head>(e);
+                (r.emplace<Rest>(e), ...);
+            }};
+}
+
 inline constexpr Spawnable Spawnables[] = {
     {"empty", "Entity", ICON_MD_CATEGORY, nullptr, nullptr},
 
-    {"mesh", "Static Mesh", ICON_MD_HVAC,
-     +[](const entt::registry& r, entt::entity e) { return r.all_of<Mesh_C>(e); },
-     +[](entt::registry& r, entt::entity e)
-     {
-         r.emplace<Mesh_C>(e);
-         r.emplace<Transform_C>(e);
-     }},
-
-    {"camera", "Camera", ICON_MD_VIDEOCAM,
-     +[](const entt::registry& r, entt::entity e) { return r.all_of<Camera_C>(e); },
-     +[](entt::registry& r, entt::entity e)
-     {
-         r.emplace<Camera_C>(e);
-         r.emplace<Transform_C>(e);
-     }},
-
-    {"pointLight", "Point Light", ICON_MD_LIGHTBULB,
-     +[](const entt::registry& r, entt::entity e) { return r.all_of<PointLight_C>(e); },
-     +[](entt::registry& r, entt::entity e)
-     {
-         r.emplace<PointLight_C>(e);
-         r.emplace<Transform_C>(e);
-     }},
-
-    {"skybox", "Skybox", ICON_MD_PANORAMA,
-     +[](const entt::registry& r, entt::entity e) { return r.all_of<Skybox_C>(e); },
-     +[](entt::registry& r, entt::entity e) { r.emplace<Skybox_C>(e); }},
+    spawnable<Mesh_C, Transform_C>("mesh", "Static Mesh", ICON_MD_HVAC),
+    spawnable<Camera_C, Transform_C>("camera", "Camera", ICON_MD_VIDEOCAM),
+    spawnable<PointLight_C, Transform_C>("pointLight", "Point Light", ICON_MD_LIGHTBULB),
+    spawnable<Skybox_C>("skybox", "Skybox", ICON_MD_PANORAMA),
 };
 
 // Both lookups fall back on the empty entity, which is the one entry every

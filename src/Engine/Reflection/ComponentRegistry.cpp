@@ -35,11 +35,17 @@ ComponentRegistry& ComponentRegistry::instance()
     return registry;
 }
 
-void ComponentRegistry::add(ComponentType type)
+uint32_t ComponentRegistry::add(ComponentType type)
 {
     ThrowAssert(find(type.name) == nullptr,
                 "component registered twice: " + type.name);
+    ThrowAssert(types_.size() < MaxComponentTypes,
+                "too many component types for ComponentMask — widen it");
+
+    const auto index = static_cast<uint32_t>(types_.size());
+    type.mask = maskOfIndex(index);
     types_.push_back(std::move(type));
+    return index;
 }
 
 const ComponentType* ComponentRegistry::find(std::string_view name) const

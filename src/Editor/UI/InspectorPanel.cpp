@@ -69,7 +69,7 @@ void InspectorPanel::drawReflected(EntityHandle ent, World& world)
                                              [&] { return f.type->drawUI(f.ptrIn(c), f); });
 
         if (changed)
-            world.instanceManager_->markDirty(ent, t.meta.flag);
+            world.instanceManager_->markDirty(ent, t.mask);
     }
 }
 
@@ -360,7 +360,7 @@ void InspectorPanel::drawSkybox(EntityHandle ent, App& app)
         }
 
     if (changed)
-        app.world_->instanceManager_->markDirty(ent, ComponentFlag::Skybox);
+        app.world_->instanceManager_->markDirty<Skybox_C>(ent);
 }
 
 }  // namespace batap

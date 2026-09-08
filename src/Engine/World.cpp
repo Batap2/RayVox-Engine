@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "Components/Camera_C.h"
-#include "Components/ComponentFlag.h"
 #include "Engine.h"
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
@@ -33,7 +32,7 @@ World::World(Engine& ctx) : ctx_(&ctx)
             auto& reg = scene_->registry_;
             reg.view<Camera_C>().each(
                 [&](entt::entity e, Camera_C& c)
-                { instanceManager_->markDirty({&reg, e}, ComponentFlag::Camera); });
+                { instanceManager_->markDirty<Camera_C>({&reg, e}); });
         });
 
     bindScene(ctx, *this);

@@ -1,7 +1,6 @@
 #include "InstanceManager.h"
 #include <cstdint>
 #include <cstring>
-#include "Components/ComponentFlag.h"
 #include "Components/EntityHandle.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/ResourceManager.h"
@@ -23,7 +22,7 @@ GPUInstanceManager::~GPUInstanceManager()
         [&](auto& pool)
         {
             using InstanceT = typename std::remove_reference_t<decltype(pool)>::InstanceType;
-            using Marker = typename InstanceT::Marker;
+            using Marker = MarkerOf<InstanceT>;
             registry_->on_construct<Marker>().disconnect(this);
             registry_->on_destroy<Marker>().disconnect(this);
         });
@@ -36,7 +35,7 @@ void GPUInstanceManager::connectHooks(entt::registry& reg)
         [&](auto& pool)
         {
             using InstanceT = typename std::remove_reference_t<decltype(pool)>::InstanceType;
-            using Marker = typename InstanceT::Marker;
+            using Marker = MarkerOf<InstanceT>;
             reg.on_construct<Marker>()
                 .template connect<&GPUInstanceManager::onMarkerCreated<InstanceT>>(*this);
             reg.on_destroy<Marker>()
@@ -73,7 +72,7 @@ void GPUInstanceManager::uploadRemainingFrameDirty(Engine& ctx)
 
             // Built on the stack so staging is only ever written linearly.
             GPUData data{};
-            InstanceFill<InstanceT>::fill(ctx, *entityHandle.reg_, entityHandle.entity_, data);
+            InstanceT::fill({ctx, *entityHandle.reg_, entityHandle.entity_}, data);
 
             auto span = resourceManager_.requestUpload(frameInstancePool.instancePoolHandle_,
                                                        sizeof(GPUData), id * sizeof(GPUData));
@@ -93,17 +92,18 @@ void GPUInstanceManager::uploadRemainingFrameDirty(Engine& ctx)
     pools_.forEach(upload);
 }
 
-void GPUInstanceManager::markDirty(const EntityHandle& handle, ComponentFlag componentFlag)
+void GPUInstanceManager::markDirty(const EntityHandle& handle, ComponentMask changed)
 {
-    // Bailing out here rather than at each call site lets generic code —
-    // the field loops, Scene::write<T> — mark anything unconditionally.
-    if (!any(componentFlag))
+    // Bailing out here rather than at each call site lets generic code — the
+    // field loops, Scene::write<T> — mark anything unconditionally: a CPU-only
+    // component has an empty mask and reaches no pool.
+    if (changed == 0)
         return;
 
     forEachPool(
         [&](auto& pool)
         {
-            if (!any(componentFlag & pool.instanceUsedComponentFlag_) || !pool.contains(handle))
+            if ((changed & pool.usedComponents_) == 0 || !pool.contains(handle))
                 return;
 
             pool.dirtyInstances_[handle].setAll();

@@ -179,7 +179,7 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
 
             if (ct->meta.onDeserialized)
                 ct->meta.onDeserialized(h, world);
-            world.instanceManager_->markDirty(h, ct->meta.flag);
+            world.instanceManager_->markDirty(h, ct->mask);
         }
 
         created.push_back(h.entity_);

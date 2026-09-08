@@ -19,7 +19,6 @@ struct Materials_C
 static_assert(refl::fieldName<Materials_C, 0>() == "slots");
 static_assert(refl::fieldName<Materials_C, 1>() == "count");
 
-BATAP_COMPONENT(Materials_C, "materials",
-                ComponentMeta{.flag = ComponentFlag::Materials, .customEditor = true});
+BATAP_COMPONENT(Materials_C, "materials", ComponentMeta{.customEditor = true});
 
 }  // namespace batap

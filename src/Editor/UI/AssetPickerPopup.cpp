@@ -176,7 +176,7 @@ void AssetPickerPopup::draw(App& app)
                         if (slotIndex_ < mc->count)
                         {
                             mc->slots[slotIndex_] = std::get<MaterialHandle>(*handle);
-                            app.world_->instanceManager_->markDirty(ent_, ComponentFlag::Materials);
+                            app.world_->instanceManager_->markDirty<Materials_C>(ent_);
                         }
 
                 if (type_ == AssetType::Texture && matHandle_)
@@ -189,7 +189,7 @@ void AssetPickerPopup::draw(App& app)
                         if (auto* th = std::get_if<TextureHandle>(&*handle))
                         {
                             sky->hdri_ = *th;
-                            app.world_->instanceManager_->markDirty(ent_, ComponentFlag::Skybox);
+                            app.world_->instanceManager_->markDirty<Skybox_C>(ent_);
                         }
             }
 

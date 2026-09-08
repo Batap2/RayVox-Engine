@@ -1,6 +1,5 @@
 #include "Transform_S.h"
 
-#include "Components/ComponentFlag.h"
 #include "Components/EntityHandle.h"
 #include "Components/Hierarchy_C.h"
 #include "Systems/Hierarchy_S.h"
@@ -50,7 +49,7 @@ void Transform_S::ensure_chain_up_to_date(EntityHandle h, GPUInstanceManager& in
         {
             t.world_ = t.local_;
         }
-        instanceManager.markDirty({&reg, node}, ComponentFlag::Transform);
+        instanceManager.markDirty<Transform_C>({&reg, node});
     }
 }
 
@@ -278,7 +277,7 @@ void Transform_S::flushDirty(entt::registry& reg, GPUInstanceManager& instanceMa
             if (dirtyHere)
             {
                 t.world_ = it.parentWorld * t.local_;
-                instanceManager.markDirty({&reg, it.e}, ComponentFlag::Transform);
+                instanceManager.markDirty<Transform_C>({&reg, it.e});
             }
 
             const transform childPW = t.world_;

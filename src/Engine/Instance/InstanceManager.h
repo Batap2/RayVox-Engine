@@ -74,22 +74,16 @@ struct FrameDirtyFlag
     }
 };
 
-template <typename T>
-concept HasUsedComponents = requires {
-    { T::UsedComposents } -> std::convertible_to<ComponentFlag>;
-};
-
-template <typename type>
+template <GPUInstance type>
 struct FrameInstancePool
 {
-    static_assert(requires { typename type::GPUData; });
-    static_assert(HasUsedComponents<type>);
     using InstanceType = type;
 
-    explicit FrameInstancePool(ResourceManager& rm) : resourceManager_(rm)
+    explicit FrameInstancePool(ResourceManager& rm)
+        : resourceManager_(rm), name_(refl::typeName<type>()), usedComponents_(usedComponentMask<type>())
     {
-        gpuPoolCapacity_ = type::InitialCapacity;
-        name_ = type::PoolName;
+        gpuPoolCapacity_ = initialCapacityOf<type>();
+        name_ += "Pool";
         createGPUResources();
     }
 
@@ -100,7 +94,9 @@ struct FrameInstancePool
     emhash8::HashMap<GPUInstanceID, EntityHandle> idToEntity_;
     emhash8::HashMap<EntityHandle, FrameDirtyFlag> dirtyInstances_;
 
-    static constexpr ComponentFlag instanceUsedComponentFlag_ = type::UsedComposents;
+    // Set once the registry has handed out its indices, so a component change
+    // routes to the pools whose Uses list names it.
+    ComponentMask usedComponents_ = 0;
 
     GPUResourceHandle instancePoolHandle_;
 
@@ -250,7 +246,13 @@ struct GPUInstanceManager
     ~GPUInstanceManager();
 
     void uploadRemainingFrameDirty(Engine& ctx);
-    void markDirty(const EntityHandle& handle, ComponentFlag componentFlag);
+    void markDirty(const EntityHandle& handle, ComponentMask changed);
+
+    template <class Component>
+    void markDirty(const EntityHandle& handle)
+    {
+        markDirty(handle, componentMask<Component>());
+    }
 
     // Membership follows the marker component: emplacing one anywhere — factory,
     // deserializer, game code — puts the entity in its pool, and destroying the

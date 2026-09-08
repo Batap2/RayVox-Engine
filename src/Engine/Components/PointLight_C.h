@@ -15,5 +15,5 @@ struct PointLight_C
 };
 
 // Fields, json keys and UI are derived from the struct.
-BATAP_COMPONENT(PointLight_C, "pointLight", ComponentMeta{.flag = ComponentFlag::PointLight});
+BATAP_COMPONENT(PointLight_C, "pointLight");
 }  // namespace batap

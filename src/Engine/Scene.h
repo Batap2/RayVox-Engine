@@ -40,11 +40,11 @@ struct Scene
 
         void commit() noexcept
         {
-            // componentFlag<T>() is None for a CPU-only component, and
-            // markDirty ignores it — writing to one is not an error.
+            // The mask is empty for a CPU-only component, and markDirty
+            // ignores it — writing to one is not an error.
             if (ptr && instanceManager)
             {
-                instanceManager->markDirty(EntityHandle(r, e), componentFlag<T>());
+                instanceManager->markDirty<T>(EntityHandle(r, e));
             }
             // avoid double commit
             ptr = nullptr;

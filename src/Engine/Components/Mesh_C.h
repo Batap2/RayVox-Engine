@@ -15,6 +15,5 @@ struct Mesh_C
 // cannot express.
 static_assert(refl::fieldName<Mesh_C, 0>() == "mesh");
 
-BATAP_COMPONENT(Mesh_C, "mesh",
-                ComponentMeta{.flag = ComponentFlag::Mesh, .customEditor = true});
+BATAP_COMPONENT(Mesh_C, "mesh", ComponentMeta{.customEditor = true});
 }  // namespace batap

@@ -1,10 +1,27 @@
 #pragma once
 
+// The one file to edit to add something the GPU draws.
+//
+// An instance is a struct with no base class, giving:
+//   GPUData         the ShaderInterop struct one entity occupies in the pool
+//   Uses            every component fill() reads; its head is the marker
+//                   component whose presence puts an entity in the pool
+//   Binding         its frame set slot
+//   fill()          how one entity is turned into one GPUData
+//
+// and optionally InitialCapacity (default 1) and CountField, to push the pool
+// size to the shaders. Adding it to GPUInstances at the bottom gives it its
+// pool, its upload pass, its dirty routing, its frame set binding and its
+// entt hooks.
+//
+// Uses is checked: fill() sees only the components it lists, so reading one
+// that is missing from it is a build error rather than a buffer that silently
+// stops updating.
+
 #include "Assets/AssetManager.h"
 #include "Assets/Mesh.h"
 #include "Assets/Texture.h"
 #include "Components/Camera_C.h"
-#include "Components/ComponentFlag.h"
 #include "Components/Materials_C.h"
 #include "Components/Mesh_C.h"
 #include "Components/PointLight_C.h"
@@ -13,6 +30,7 @@
 #include "EigenTypes.h"
 #include "Engine.h"
 #include "Handles.h"
+#include "Reflection/ComponentRegistry.h"
 #include "Renderer/SkyIrradiance.h"
 #include "Shaders/ShaderInterop.h"
 
@@ -23,6 +41,7 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
+#include <type_traits>
 
 namespace batap
 {
@@ -31,164 +50,162 @@ template <class... Ts>
 struct TypeList
 {};
 
-inline void storeRGB(float4& dst, const v3f& rgb)
+// ----------- what an instance sees of an entity ----------------------------
+
+template <class... Cs>
+struct Access
 {
-    dst[0] = rgb.x();
-    dst[1] = rgb.y();
-    dst[2] = rgb.z();
-    dst[3] = 0.0f;
-}
+    Engine& ctx;
+    const entt::registry& reg;
+    entt::entity entity;
 
-template <class Instance>
-struct InstanceFill;
-
-// ----------- Instances :
-
-// Derived rather than aliased so an instance can override InitialCapacity and
-// PoolName. It must also declare `Binding`, its frame-set slot, and `Marker`,
-// the component whose presence puts an entity in the pool. It may declare
-// `CountField` to have its size pushed to the shaders.
-template <class GPUDataT, ComponentFlag UsedFlags>
-struct GPUInstanceBase
-{
-    static constexpr ComponentFlag UsedComposents = UsedFlags;
-    using GPUData = GPUDataT;
-
-    static constexpr size_t InitialCapacity = 1;
-    static constexpr const char* PoolName = "FrameInstancePool";
-
-    static_assert(std::is_trivially_copyable_v<GPUDataT>);
-    static_assert((sizeof(GPUDataT) % 4) == 0);
+    template <class C>
+    const C* get() const
+    {
+        static_assert((std::is_same_v<C, Cs> || ...),
+                      "this component is missing from the instance's Uses list — add it "
+                      "there, or a change to it would never reach the GPU");
+        return reg.try_get<C>(entity);
+    }
 };
 
-struct StaticMeshInstance
-    : GPUInstanceBase<StaticMeshGPUData,
-                      ComponentFlag::Mesh | ComponentFlag::Transform | ComponentFlag::Materials>
+namespace detail
 {
-    static constexpr size_t InitialCapacity = 256;
-    static constexpr const char* PoolName = "StaticMeshInstancePool";
+template <class List>
+struct AccessOfList;
+template <class... Cs>
+struct AccessOfList<TypeList<Cs...>>
+{
+    using type = Access<Cs...>;
+};
+
+template <class List>
+struct HeadOfList;
+template <class Head, class... Tail>
+struct HeadOfList<TypeList<Head, Tail...>>
+{
+    using type = Head;
+};
+}  // namespace detail
+
+template <class List>
+using AccessOf = typename detail::AccessOfList<List>::type;
+
+// The component that decides pool membership: emplacing it anywhere — factory,
+// deserializer, game code — puts the entity in the pool, removing it or the
+// entity takes it out.
+template <class Instance>
+using MarkerOf = typename detail::HeadOfList<typename Instance::Uses>::type;
+
+// Every GPU field is a plain float array; going through here turns a size
+// mismatch into a build error. A value shorter than the field leaves the
+// padding at the zero fill() received.
+template <size_t N, class Derived>
+void store(float (&dst)[N], const Eigen::MatrixBase<Derived>& src)
+{
+    constexpr int rows = Derived::RowsAtCompileTime;
+    constexpr int cols = Derived::ColsAtCompileTime;
+    static_assert(size_t(rows) * size_t(cols) <= N, "GPU field too small for this value");
+
+    // Materialised: src may be a block or an expression, whose data is not
+    // contiguous.
+    const Eigen::Matrix<float, rows, cols> value = src;
+    std::memcpy(dst, value.data(), sizeof(float) * size_t(rows) * size_t(cols));
+}
+
+// ----------- Instances -----------------------------------------------------
+
+struct StaticMeshInstance
+{
+    using GPUData = StaticMeshGPUData;
+    using Uses = TypeList<Mesh_C, Transform_C, Materials_C>;
     static constexpr uint32_t Binding = InstancesBinding;
-    using Marker = Mesh_C;
+    static constexpr size_t InitialCapacity = 256;
+
+    static void fill(AccessOf<Uses> in, GPUData& out)
+    {
+        if (auto* t = in.get<Transform_C>())
+            store(out.world_, t->worldMatrix());
+
+        auto indices = std::span{out.materialIndices_};
+        std::fill(indices.begin(), indices.end(), InvalidGPUIndex);
+
+        auto* mats = in.get<Materials_C>();
+        if (!mats)
+            return;
+        for (uint8_t i = 0; i < mats->count && i < indices.size(); ++i)
+            if (mats->slots[i])
+                indices[i] = mats->slots[i].index;
+    }
 };
 
 struct CameraInstance
-    : GPUInstanceBase<CameraGPUData, ComponentFlag::Transform | ComponentFlag::Camera>
 {
-    static constexpr size_t InitialCapacity = 1;
-    static constexpr const char* PoolName = "CameraInstancePool";
+    using GPUData = CameraGPUData;
+    using Uses = TypeList<Camera_C, Transform_C>;
     static constexpr uint32_t Binding = CamerasBinding;
-    using Marker = Camera_C;
+
+    static void fill(AccessOf<Uses> in, GPUData& out)
+    {
+        auto* cam = in.get<Camera_C>();
+        if (!cam)
+            return;
+
+        out.znear_ = cam->znear_;
+        out.zfar_ = cam->zfar_;
+        out.fov_ = cam->fov_;
+
+        auto* trans = in.get<Transform_C>();
+        if (!trans)
+            return;
+
+        const auto world = trans->world();
+        store(out.view_, cam->make_view(world));
+
+        const auto frameSize = in.ctx.getFrameSize();
+        const auto aspect = static_cast<float>(frameSize.x()) / static_cast<float>(frameSize.y());
+        store(out.proj_, cam->make_proj(aspect));
+
+        store(out.pos_, world.translation());
+        store(out.right_, world.linear().col(0).normalized());
+        store(out.up_, world.linear().col(1).normalized());
+        store(out.fwd_, -world.linear().col(2).normalized());
+    }
 };
 
 struct PointLightInstance
-    : GPUInstanceBase<PointLightGPUData, ComponentFlag::Transform | ComponentFlag::PointLight>
 {
-    static constexpr size_t InitialCapacity = 32;
-    static constexpr const char* PoolName = "pointLightInstancePool";
+    using GPUData = PointLightGPUData;
+    using Uses = TypeList<PointLight_C, Transform_C>;
     static constexpr uint32_t Binding = PointLightsBinding;
-    using Marker = PointLight_C;
+    static constexpr size_t InitialCapacity = 32;
     static constexpr uint32_t DrawPush::* CountField = &DrawPush::pointLightCount_;
+
+    static void fill(AccessOf<Uses> in, GPUData& out)
+    {
+        if (auto* trans = in.get<Transform_C>())
+            store(out.pos_, trans->world().translation());
+
+        if (auto* light = in.get<PointLight_C>())
+        {
+            store(out.color_, light->color_);
+            out.intensity_ = light->intensity_;
+            out.radius_ = light->radius_;
+            out.falloff_ = light->falloff_;
+            out.castShadows_ = static_cast<uint32_t>(light->castShadows_);
+        }
+    }
 };
 
-struct SkyboxInstance : GPUInstanceBase<SkyboxGPUData, ComponentFlag::Skybox>
+struct SkyboxInstance
 {
-    static constexpr size_t InitialCapacity = 1;
-    static constexpr const char* PoolName = "SkyboxInstancePool";
+    using GPUData = SkyboxGPUData;
+    using Uses = TypeList<Skybox_C>;
     static constexpr uint32_t Binding = SkyboxBinding;
-    using Marker = Skybox_C;
-};
 
-// ----------- InstanceFill : how one instance is built from its components
-
-// Runs whenever any of the instance's UsedComposents changed, and rewrites the
-// whole struct. `out` arrives zero-initialised.
-
-template <>
-struct InstanceFill<StaticMeshInstance>
-{
-    static void fill(Engine& ctx, const entt::registry& r, entt::entity e, StaticMeshGPUData& out)
+    static void fill(AccessOf<Uses> in, GPUData& out)
     {
-        if (auto* t = r.try_get<Transform_C>(e))
-            std::memcpy(out.world_, t->worldMatrix().data(), sizeof(out.world_));
-
-        auto idxSpan = std::span{out.materialIndices_};
-        std::fill(idxSpan.begin(), idxSpan.end(), InvalidGPUIndex);
-
-        auto* matsC = r.try_get<Materials_C>(e);
-        if (!matsC)
-            return;
-        for (uint8_t i = 0; i < matsC->count && i < 8; ++i)
-            if (matsC->slots[i])
-                idxSpan[i] = matsC->slots[i].index;
-    }
-};
-
-template <>
-struct InstanceFill<CameraInstance>
-{
-    static void fill(Engine& ctx, const entt::registry& r, entt::entity e, CameraGPUData& out)
-    {
-        auto* camC = r.try_get<Camera_C>(e);
-        if (!camC)
-            return;
-
-        out.znear_ = camC->znear_;
-        out.zfar_ = camC->zfar_;
-        out.fov_ = camC->fov_;
-
-        auto* transC = r.try_get<Transform_C>(e);
-        if (!transC)
-            return;
-
-        auto worldM = transC->world();
-        auto view = camC->make_view(worldM);
-        std::memcpy(out.view_, view.data(), sizeof(out.view_));
-
-        auto frameSize = ctx.getFrameSize();
-        auto aspect = static_cast<float>(frameSize.x()) / static_cast<float>(frameSize.y());
-        auto proj = camC->make_proj(aspect);
-        std::memcpy(out.proj_, proj.data(), sizeof(out.proj_));
-
-        v3f pos = worldM.translation();
-        v3f right = worldM.linear().col(0).normalized();
-        v3f up = worldM.linear().col(1).normalized();
-        v3f fwd = -worldM.linear().col(2).normalized();
-
-        std::memcpy(out.pos_, pos.data(), sizeof(out.pos_));
-        std::memcpy(out.right_, right.data(), sizeof(out.right_));
-        std::memcpy(out.up_, up.data(), sizeof(out.up_));
-        std::memcpy(out.fwd_, fwd.data(), sizeof(out.fwd_));
-    }
-};
-
-template <>
-struct InstanceFill<PointLightInstance>
-{
-    static void fill(Engine& ctx, const entt::registry& r, entt::entity e, PointLightGPUData& out)
-    {
-        if (auto* transC = r.try_get<Transform_C>(e))
-        {
-            v3f worldPos = transC->world().translation();
-            std::memcpy(out.pos_, worldPos.data(), sizeof(out.pos_));
-        }
-
-        if (auto* pLightC = r.try_get<PointLight_C>(e))
-        {
-            std::memcpy(out.color_, pLightC->color_.data(), sizeof(out.color_));
-            out.intensity_ = pLightC->intensity_;
-            out.radius_ = pLightC->radius_;
-            out.falloff_ = pLightC->falloff_;
-            out.castShadows_ = static_cast<uint32_t>(pLightC->castShadows_);
-        }
-    }
-};
-
-template <>
-struct InstanceFill<SkyboxInstance>
-{
-    static void fill(Engine& ctx, const entt::registry& r, entt::entity e, SkyboxGPUData& out)
-    {
-        auto* sky = r.try_get<Skybox_C>(e);
+        auto* sky = in.get<Skybox_C>();
         if (!sky)
             return;
 
@@ -198,7 +215,7 @@ struct InstanceFill<SkyboxInstance>
         SH9 sh;
         if (sky->mode_ == Skybox_C::Mode::HDRI && sky->hdri_)
         {
-            if (auto* tex = ctx.assetManager_->get<Texture>(sky->hdri_))
+            if (auto* tex = in.ctx.assetManager_->get<Texture>(sky->hdri_))
             {
                 sh = tex->irradianceSH_;
                 out.bindlessIndex = tex->bindlessIndex_;
@@ -211,28 +228,59 @@ struct InstanceFill<SkyboxInstance>
         }
 
         for (size_t i = 0; i < 9; ++i)
-        {
-            out.sh[i][0] = sh.c[i].x() * sky->intensity_;
-            out.sh[i][1] = sh.c[i].y() * sky->intensity_;
-            out.sh[i][2] = sh.c[i].z() * sky->intensity_;
-            out.sh[i][3] = 0.0f;
-        }
+            store(out.sh[i], sh.c[i] * sky->intensity_);
 
         out.mode = static_cast<uint32_t>(sky->mode_);
         out.intensity = sky->intensity_;
-        storeRGB(out.color1, sky->color1_);
-        storeRGB(out.color2, sky->color2_);
-        storeRGB(out.color3, sky->color3_);
+        store(out.color1, sky->color1_);
+        store(out.color2, sky->color2_);
+        store(out.color3, sky->color3_);
         out.horizonWidth = sky->horizonWidth_;
     }
 };
 
 // ----------- GPUInstances : the one list the plumbing reads -----------------
 
-// An instance added here gets its pool, its upload pass, its dirty routing, its
-// frame set binding and its entt hooks.
 using GPUInstances =
     TypeList<StaticMeshInstance, CameraInstance, PointLightInstance, SkyboxInstance>;
+
+// What the plumbing assumes of an instance, checked where it is declared
+// rather than deep in a pool instantiation.
+template <class T>
+concept GPUInstance = requires {
+    typename T::GPUData;
+    typename T::Uses;
+    { T::Binding } -> std::convertible_to<uint32_t>;
+    requires std::is_trivially_copyable_v<typename T::GPUData>;
+    requires(sizeof(typename T::GPUData) % 4) == 0;
+};
+
+template <class Instance>
+constexpr size_t initialCapacityOf()
+{
+    if constexpr (requires { Instance::InitialCapacity; })
+        return Instance::InitialCapacity;
+    else
+        return 1;
+}
+
+// The components whose change must re-upload this instance, as the bits the
+// registry handed out. Not constexpr: indices are assigned at static init, so
+// this is read once the pools are built.
+namespace detail
+{
+template <class... Cs>
+ComponentMask maskOfList(TypeList<Cs...>*)
+{
+    return (ComponentMask{0} | ... | componentMask<Cs>());
+}
+}  // namespace detail
+
+template <class Instance>
+ComponentMask usedComponentMask()
+{
+    return detail::maskOfList(static_cast<typename Instance::Uses*>(nullptr));
+}
 
 // A binding nobody writes leaves the shader reading a null buffer, which no
 // driver reports: turn both omission and collision into a build error.
@@ -242,6 +290,8 @@ struct FrameSetBindings;
 template <class... Instances>
 struct FrameSetBindings<TypeList<Instances...>>
 {
+    static_assert((GPUInstance<Instances> && ...));
+
     static constexpr uint32_t claimed =
         ((1u << Instances::Binding) | ...) | (1u << MaterialsBinding);
 

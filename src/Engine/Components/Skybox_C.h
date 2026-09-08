@@ -22,7 +22,6 @@ struct Skybox_C
 // Serialization is derived from the struct; the inspector keeps its own panel
 // for the HDRI asset picker and the mode combo, which the generic field loop
 // cannot express.
-BATAP_COMPONENT(Skybox_C, "skybox",
-                ComponentMeta{.flag = ComponentFlag::Skybox, .customEditor = true},
+BATAP_COMPONENT(Skybox_C, "skybox", ComponentMeta{.customEditor = true},
                 fieldMeta<&Skybox_C::horizonWidth_>({.speed = 0.01f, .min = 0.01f, .max = 1.f}));
 }  // namespace batap

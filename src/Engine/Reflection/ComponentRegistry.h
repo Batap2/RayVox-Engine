@@ -1,24 +1,29 @@
 #pragma once
 
 // Component reflection registry. Declaring a component once with
-// BATAP_COMPONENT gives serialization, deserialization and editor UI for
-// free: they are generic loops over the registered field lists.
+// BATAP_COMPONENT gives serialization, deserialization, editor UI and GPU
+// dirty routing for free: they are generic loops over the registered field
+// lists.
 //
 //   struct Health_C { float current = 100.f; float max = 100.f; };
 //   BATAP_COMPONENT(Health_C, "health");
 //
-// The field list is read from the struct itself: each member becomes a json
-// key, with the trailing '_' stripped (color_ -> "color").
+// The json key is spelled out — it is a durable contract with scenes on disk,
+// so it must survive a class rename untouched. Each member becomes a json key
+// from its own name, with the trailing '_' stripped (color_ -> "color"), and
+// the dirty bit is assigned at registration — a component never allocates a
+// bit itself.
 //
 // To change how a field is edited, change its type: `col3` instead of `v3f`
-// gives a color picker. Only what no type can carry — a slider range, a drag
-// speed — is passed as an extra:
+// gives a color picker. Only what nothing else can carry — a slider range, a
+// drag speed — is passed as an extra:
 //
 //   BATAP_COMPONENT(Enemy_C, "enemy",
-//       ComponentMeta{.flag = ComponentFlag::Enemy},
 //       fieldMeta<&Enemy_C::aggro_>({.min = 0.f, .max = 1.f}));
+//
+// A component feeds the GPU by appearing in an instance's `Uses` list
+// (instanceDeclaration.h) — nothing to declare on this side.
 
-#include "Components/ComponentFlag.h"
 #include "Components/EntityHandle.h"
 #include "Reflection/StructFields.h"
 
@@ -97,8 +102,6 @@ struct Field
 
 struct ComponentMeta
 {
-    // GPU dirty bit to raise when the component changes. None = CPU-only.
-    ComponentFlag flag = ComponentFlag::None;
     uint32_t version = 1;
     // Post-load hook for components whose state isn't just its fields
     // (e.g. Transform must rebuild matrices through Transform_S).
@@ -109,25 +112,41 @@ struct ComponentMeta
     bool customEditor = false;
 };
 
-// The GPU dirty flag T declared, or None when T is CPU-only or unregistered.
-// Filled at static init by addComponentType, so BATAP_COMPONENT stays the one
-// place a component names its flag.
+// --- component identity --------------------------------------------------
+
+// A set of component types, as one bit per registered component. Used to route
+// a change to the GPU pools that read the component.
+using ComponentMask = uint64_t;
+
+inline constexpr uint32_t InvalidComponentIndex = 0xFFFFFFFFu;
+inline constexpr size_t MaxComponentTypes = 64;  // width of ComponentMask
+
+// Assigned by addComponentType at static init, so a component never picks a
+// bit for itself and the count is not capped by a hand-written enum.
 template <class T>
-ComponentFlag& componentFlagSlot()
+uint32_t& componentIndexSlot()
 {
-    static ComponentFlag flag = ComponentFlag::None;
-    return flag;
+    static uint32_t index = InvalidComponentIndex;
+    return index;
 }
 
-template <class T>
-ComponentFlag componentFlag()
+inline ComponentMask maskOfIndex(uint32_t index)
 {
-    return componentFlagSlot<T>();
+    return index == InvalidComponentIndex ? ComponentMask{0} : (ComponentMask{1} << index);
+}
+
+// Empty for a type that never registered — writing to a CPU-only component is
+// not an error, it just marks nothing.
+template <class T>
+ComponentMask componentMask()
+{
+    return maskOfIndex(componentIndexSlot<T>());
 }
 
 struct ComponentType
 {
     std::string name;  // json "type" value ("pointLight")
+    ComponentMask mask = 0;
     ComponentMeta meta;
     std::vector<Field> fields;
 
@@ -141,7 +160,8 @@ struct ComponentRegistry
 {
     static ComponentRegistry& instance();
 
-    void add(ComponentType type);
+    // Returns the index assigned to the component.
+    uint32_t add(ComponentType type);
     const ComponentType* find(std::string_view name) const;
     const std::vector<ComponentType>& all() const { return types_; }
 
@@ -218,8 +238,8 @@ void addComponentType(std::string_view name, ComponentMeta meta, std::vector<Fie
     { return &r.get_or_emplace<T>(e); };
     t.remove = [](entt::registry& r, entt::entity e) { r.remove<T>(e); };
 
-    componentFlagSlot<T>() = meta.flag;
-    ComponentRegistry::instance().add(std::move(t));
+    const uint32_t index = ComponentRegistry::instance().add(std::move(t));
+    componentIndexSlot<T>() = index;
 }
 
 // --- registration ------------------------------------------------------------
@@ -228,7 +248,6 @@ template <class T, class... Extra>
 bool registerComponent(std::string_view name, Extra&&... extra)
 {
     ComponentType t;
-    t.name = name;
 
     // extras come in any order: one optional ComponentMeta + field overrides
     std::vector<FieldOverride> overrides;

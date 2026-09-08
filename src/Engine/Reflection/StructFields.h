@@ -147,4 +147,40 @@ consteval std::string_view fieldName()
     return name.back() == '_' ? name.substr(0, name.size() - 1) : name;
 }
 
+
+// --- type name -----------------------------------------------------------
+
+namespace detail
+{
+template <class T>
+consteval std::string_view prettyTypeSignature()
+{
+    return __PRETTY_FUNCTION__;
+}
+
+// "... prettyTypeSignature() [T = batap::PointLight_C]" -> "PointLight_C"
+consteval std::string_view parseTypeName(std::string_view sig)
+{
+    const auto eq = sig.find("T = ");
+    if (eq == std::string_view::npos)
+        return {};
+    sig = sig.substr(eq + 4);
+    const auto end = sig.find_last_of(']');
+    if (end != std::string_view::npos)
+        sig = sig.substr(0, end);
+    const auto colons = sig.rfind("::");
+    return colons == std::string_view::npos ? sig : sig.substr(colons + 2);
+}
+}  // namespace detail
+
+// Unqualified name of T, template arguments included ("PointLight_C").
+template <class T>
+consteval std::string_view typeName()
+{
+    constexpr auto name = detail::parseTypeName(detail::prettyTypeSignature<T>());
+    static_assert(!name.empty(),
+                  "type name extraction failed — unsupported compiler output format");
+    return name;
+}
+
 }  // namespace batap::refl

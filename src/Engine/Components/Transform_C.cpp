@@ -21,8 +21,7 @@ namespace batap {
         // Keys kept as pos/rot/scale — they are what scenes on disk use.
         addComponentType<Transform_C>(
             "transform",
-            ComponentMeta{.flag = ComponentFlag::Transform,
-                          .onDeserialized = &Transform_C::afterDeserialize,
+            ComponentMeta{.onDeserialized = &Transform_C::afterDeserialize,
                           .customEditor = true},
             {field<&Transform_C::localPosition_>("pos"),
              field<&Transform_C::localRotation_>("rot"),
