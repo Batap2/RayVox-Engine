@@ -1,3 +1,7 @@
+#pragma once
+
+namespace batap
+{
 struct FreeCamController_C
 {
     float moveSpeed_ = 10.0f;
@@ -10,3 +14,4 @@ struct FreeCamController_C
     bool requireRightMouseButton_ = false;
     bool controlled_ = true;
 };
+}  // namespace batap

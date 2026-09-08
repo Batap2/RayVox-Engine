@@ -3,6 +3,7 @@
 
 #include "Components/Hierarchy_C.h"
 #include "Components/Name_C.h"
+#include "Components/UnknownComponents_C.h"
 #include "Engine.h"
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
@@ -99,6 +100,11 @@ void EntitySerializer::save(World& world, const Engine& ctx, const std::string& 
         auto compsJ = reflectedComponents(h, ctx);
         for (const auto& cj : compsJ)
             usedTypes.emplace(cj["type"].get<std::string>());
+
+        if (auto* uc = reg.try_get<UnknownComponents_C>(e))
+            for (const std::string& blob : uc->blobs_)
+                compsJ.push_back(nlohmann::json::parse(blob));
+
         ej["components"] = std::move(compsJ);
 
         entitiesJ.push_back(std::move(ej));
@@ -170,7 +176,10 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
         {
             const ComponentType* ct = ComponentRegistry::instance().find(cj.value("type", ""));
             if (!ct)
+            {
+                reg.get_or_emplace<UnknownComponents_C>(h.entity_).blobs_.push_back(cj.dump());
                 continue;
+            }
 
             void* c = ct->getOrEmplace(reg, h.entity_);
             for (const Field& f : ct->fields)

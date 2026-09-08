@@ -36,8 +36,6 @@ struct Transform_S
     void rotate(EntityHandle e, const v3f& axis, float radians, Space space = Space::Local);
     void scale(EntityHandle e, const v3f& vec);
 
-    void setParent(EntityHandle child, entt::entity newParent, bool keepWorld);
-
     void flushDirty(entt::registry& reg, GPUInstanceManager& instanceManager);
     void markDirty(EntityHandle e);
 

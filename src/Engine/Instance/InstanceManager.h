@@ -22,7 +22,7 @@ namespace batap
 {
 struct GPUInstanceID
 {
-    uint32_t value = 0;
+    uint32_t value = std::numeric_limits<uint32_t>::max();
 
     GPUInstanceID() = default;
     GPUInstanceID(uint32_t v) : value(v) {}

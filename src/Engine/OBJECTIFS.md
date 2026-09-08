@@ -39,33 +39,16 @@ investissement déjà en place : la réflexion (`BATAP_COMPONENT` +
 
 ## 1. Hygiène immédiate (quelques heures, aucun risque)
 
-- [ ] **Validation des layouts par réflexion SPIR-V** — au chargement d'un
-      shader, comparer le layout reflété (offset/taille de chaque champ) avec
-      `offsetof`/`sizeof` C++. Mismatch → erreur franche au démarrage nommant le
-      champ. Le header garantit les *sources*, la réflexion vérifie le *binaire
-      chargé*, ce que `ShaderInterop.h` ne couvre pas : `.spv` périmé, oubli de
-      rebuild, shader rechargé à chaud contre un C++ non recompilé. Les offsets
-      sont des décorations obligatoires du SPIR-V : soit SPIRV-Reflect (deux fichiers),
-      soit un lecteur maison des décorations `Offset`/`ArrayStride` (~150 lignes,
-      cohérent avec « minimum de libs »). Logique de comparaison écrite contre
-      une représentation neutre `{name, offset, size}`.
-- [ ] **Round-trip des composants inconnus** dans `EntitySerializer`
-      (`EntitySerializer.cpp:205`) — aujourd'hui `if (!ct) continue;` au load +
-      save reflété = un composant non enregistré dans le binaire est
-      **silencieusement détruit** à la sauvegarde. Conserver le blob JSON tel
-      quel et le réémettre. Protège aussi entre versions du moteur.
+- [x] **Round-trip des composants inconnus** dans `EntitySerializer` — fait :
+      un composant non enregistré est stocké tel quel (`UnknownComponents_C`,
+      blob JSON) au load et réémis au save.
 - [x] **Supprimer `RenderInstance_C`** — fait (`RenderInstanceID_C.h` supprimé,
       plus aucune référence).
-- [ ] **`GPUInstanceID` par défaut = invalide** — `InstanceManager.h:28` :
-      défaut `value = 0` mais `valid()` teste contre `uint32_max`, donc un ID
-      défaut pointe le slot 0. Initialiser à max.
-- [ ] **`Transform_S::setParent` déclaré, jamais défini** (`Transform_S.h:39`) —
-      erreur de link à la première utilisation. `Hierarchy_S::setParent` existe :
-      soit y porter le `keepWorld`, soit supprimer la déclaration morte.
-- [ ] **`FreeCamController_C.h`** : ni `#pragma once` ni `namespace batap` —
-      seul composant dans ce cas.
-- [ ] **Supprimer `include/DirectX-Headers`** (3.8 Mo) — reste du backend DX12,
-      plus référencé par aucun CMake.
+- [x] **`GPUInstanceID` par défaut = invalide** — fait, défaut = `uint32_max`.
+- [x] **`Transform_S::setParent` déclaré, jamais défini** — fait, déclaration
+      morte supprimée (`Hierarchy_S::setParent` reste la référence).
+- [x] **`FreeCamController_C.h`** — fait, `#pragma once` + `namespace batap`.
+- [x] **Supprimer `include/DirectX-Headers`** — fait.
 
 ## 2. Simplification du pipeline composant — FAIT (sept. 2026), reste un item
 
