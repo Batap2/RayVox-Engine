@@ -279,7 +279,7 @@ Les autres différences de design vs le ResourceManager DX12 :
 Le moteur entier tourne sur mac : `cmake --preset macos-debug`, puis
 
 ```bash
-DYLD_LIBRARY_PATH=/opt/homebrew/lib ./build/macos-debug/bin/Batap_TestGame --project GameExemple
+DYLD_LIBRARY_PATH=/opt/homebrew/lib ./build/macos-debug/bin/GameExemple --project GameExemple
 # BATAP_DUMP_FRAME=60 en plus → écrit frame_dump.png (readback de la frame 60)
 ```
 

@@ -2,23 +2,45 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Editor (msvc-release)",
+      "name": "GameExemple_Editor (relwithdebinfo)",
       "type": "cppvsdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/release/bin/Batap_Editor.exe",
+      "program": "${workspaceFolder}/build/relwithdebinfo/bin/GameExemple_Editor.exe",
+      "args": ["--project", "${workspaceFolder}/GameExemple"],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build (msvc-release)"
+      "preLaunchTask": "Build (msvc-relwithdebinfo)"
     },
     {
-      "name": "Editor (msvc-debug)",
+      "name": "GameExemple_Editor (debug)",
       "type": "cppvsdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/debug/bin/Batap_Editor.exe",
+      "program": "${workspaceFolder}/build/debug/bin/GameExemple_Editor.exe",
+      "args": ["--project", "${workspaceFolder}/GameExemple"],
       "cwd": "${workspaceFolder}",
       "preLaunchTask": "Build (msvc-debug)"
     },
     {
-      "name": "Editor (msvc-relwithdebinfo)",
+      "name": "GameExemple (relwithdebinfo)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/relwithdebinfo/bin/GameExemple.exe",
+      "args": ["--project", "${workspaceFolder}/GameExemple"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "Build (msvc-relwithdebinfo)"
+    },
+    {
+      "name": "GameExemple (debug)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/debug/bin/GameExemple.exe",
+      "args": ["--project", "${workspaceFolder}/GameExemple"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "Build (msvc-debug)"
+    },
+    {
+      "name": "Batap_Editor bare (relwithdebinfo)",
       "type": "cppvsdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/relwithdebinfo/bin/Batap_Editor.exe",
@@ -26,30 +48,10 @@
       "preLaunchTask": "Build (msvc-relwithdebinfo)"
     },
     {
-      "name": "TestGame (msvc-debug)",
-      "type": "cppvsdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/debug/bin/Batap_TestGame.exe",
-      "args": ["--project", "${workspaceFolder}/GameExemple"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "preLaunchTask": "Build (msvc-debug)"
-    },
-    {
-      "name": "TestGame (msvc-relwithdebinfo)",
-      "type": "cppvsdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/relwithdebinfo/bin/Batap_TestGame.exe",
-      "args": ["--project", "${workspaceFolder}/GameExemple"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "preLaunchTask": "Build (msvc-relwithdebinfo)"
-    },
-    {
-      "name": "TestGame (macos-debug)",
+      "name": "GameExemple (macos-debug)",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/build/macos-debug/bin/Batap_TestGame",
+      "program": "${workspaceFolder}/build/macos-debug/bin/GameExemple",
       "args": ["--project", "${workspaceFolder}/GameExemple"],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -58,15 +60,16 @@
       "preLaunchTask": "Build (macos-debug)"
     },
     {
-      "name": "Editor (macos-debug)",
+      "name": "GameExemple_Editor (macos-debug)",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/build/macos-debug/bin/Batap_Editor",
+      "program": "${workspaceFolder}/build/macos-debug/bin/GameExemple_Editor",
+      "args": ["--project", "${workspaceFolder}/GameExemple"],
       "cwd": "${workspaceFolder}",
       "env": {
         "DYLD_LIBRARY_PATH": "/opt/homebrew/lib"
       },
       "preLaunchTask": "Build (macos-debug)"
-    },
+    }
   ]
 }

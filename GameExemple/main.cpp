@@ -1,3 +1,5 @@
+#include "GameComponents.h"
+
 #include "Engine.h"
 #include "InputManager.h"
 #include "World.h"

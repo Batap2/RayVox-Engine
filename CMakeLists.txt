@@ -13,6 +13,14 @@ endif()
 # ------------------------------------------------------------------------------
 # Project
 # ------------------------------------------------------------------------------
+# Target map:
+#   Batap_Engine       (lib,  src/Engine)   the engine, depends on nothing
+#   Batap_EditorLib    (lib,  src/Editor)   the editor, links the engine
+#   Batap_Editor       (exe)                bare editor (engine components only)
+#   GameExemple        (exe,  GameExemple/) the game
+#   GameExemple_Editor (exe,  GameExemple/) the editor + the game's components
+# An editor exe = batap_add_editor(name, a 3-line editor_main.cpp that
+# includes GameComponents.h) — see src/Editor/CMakeLists.txt.
 project(Batap LANGUAGES C CXX)
 
 # ------------------------------------------------------------------------------
@@ -153,7 +161,7 @@ add_subdirectory("${source_dir}/Editor")
 add_subdirectory("${PROJECT_SOURCE_DIR}/GameExemple")
 
 silence_external_sources(Batap_Engine)
-silence_external_sources(Batap_Editor)
+silence_external_sources(Batap_EditorLib)
 
 # ------------------------------------------------------------------------------
 # Third-party warning tweaks

@@ -281,6 +281,24 @@ ComponentMask usedComponentMask()
     return detail::maskOfList(static_cast<typename Instance::Uses*>(nullptr));
 }
 
+// The components whose presence defines an entity's rendering aspect — one
+// per pool. GPUInstanceManager assumes at most one per entity (two markers =
+// two pools), so a UI offering components to add must exclude these; the
+// entity's aspect is chosen at spawn (Spawnable.h), not amended after.
+namespace detail
+{
+template <class... Is>
+ComponentMask markerMaskOfList(TypeList<Is...>*)
+{
+    return (ComponentMask{0} | ... | componentMask<MarkerOf<Is>>());
+}
+}  // namespace detail
+
+inline ComponentMask markerComponentMask()
+{
+    return detail::markerMaskOfList(static_cast<GPUInstances*>(nullptr));
+}
+
 // A binding nobody writes leaves the shader reading a null buffer, which no
 // driver reports: turn both omission and collision into a build error.
 template <class InstanceList>

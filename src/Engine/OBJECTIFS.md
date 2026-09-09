@@ -87,14 +87,19 @@ pas les composants du jeu → perte de données (mitigée par le round-trip du �
 réglée pour de bon ici). État actuel : `Batap_Editor` est un `add_executable`
 qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
 
-- [ ] **`src/Editor` → lib `Batap_Editor`** avec un point d'entrée `runEditor(cfg)`.
-- [ ] **L'éditeur standalone** redevient un exe trivial (le `main.cpp` actuel,
-      wWinMain/main + try/catch, devient trois lignes).
-- [ ] **Chaque jeu déclare une cible `MyGame_Editor`** : `editor_main.cpp` qui
-      inclut `GameComponents.h` (header agrégateur, par convention) + `runEditor()`.
-      L'init statique enregistre les composants du jeu dans le binaire éditeur :
-      inspecteur, menu add-component et sérialisation marchent nativement,
-      zéro schéma, zéro manifeste.
+- [x] **`src/Editor` → lib `Batap_EditorLib`** avec un point d'entrée
+      `runEditor(cfg)` (`EditorApp.h`). Le wWinMain/main + try/catch vivent une
+      seule fois dans `EntryPoint.cpp`, compilé dans chaque exe par le helper
+      CMake `batap_add_editor(name sources...)` (pas dans la lib : un objet
+      jamais référencé d'une lib statique serait droppé par le linker).
+- [x] **L'éditeur standalone** : `batap_add_editor(Batap_Editor main.cpp)`,
+      `main.cpp` = la définition d'`editorConfig()`, trois lignes.
+- [x] **Chaque jeu déclare une cible `MyGame_Editor`** : `editor_main.cpp` qui
+      inclut `GameComponents.h` (header agrégateur, par convention) +
+      `editorConfig()`. Fait pour `GameExemple_Editor` (composant d'exemple
+      `Rotator_C`). L'init statique enregistre les composants du jeu dans le
+      binaire éditeur : inspecteur, menu add-component et sérialisation
+      marchent nativement, zéro schéma, zéro manifeste.
 
 ## 4. Play / Stop (modèle snapshot, à la Unity)
 
