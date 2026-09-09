@@ -46,12 +46,35 @@ auto Field(const char* label, Fn&& drawWidget) -> decltype(drawWidget())
     return drawWidget();
 }
 
+inline void WrapDragMouse()
+{
+    if (!ImGui::IsItemActive() || !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        return;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 pos = ImGui::GetIO().MousePos;
+    const float minX = vp->Pos.x, maxX = vp->Pos.x + vp->Size.x - 1;
+    const float minY = vp->Pos.y, maxY = vp->Pos.y + vp->Size.y - 1;
+
+    ImVec2 wrapped = pos;
+    bool wrap = false;
+    if (pos.x <= minX)      { wrapped.x = maxX - 1; wrap = true; }
+    else if (pos.x >= maxX) { wrapped.x = minX + 1; wrap = true; }
+    if (pos.y <= minY)      { wrapped.y = maxY - 1; wrap = true; }
+    else if (pos.y >= maxY) { wrapped.y = minY + 1; wrap = true; }
+
+    if (wrap)
+        ImGui::TeleportMousePos(wrapped);
+}
+
 inline bool FieldDragFloat(const char* label, float* v, float speed = 1.0f, float min = 0.0f,
                            float max = 0.0f)
 {
     return Field(label, [=] {
         ImGui::SetNextItemWidth(-1.0f);
-        return ImGui::DragFloat("##v", v, speed, min, max);
+        const bool changed = ImGui::DragFloat("##v", v, speed, min, max);
+        WrapDragMouse();
+        return changed;
     });
 }
 
@@ -59,7 +82,9 @@ inline bool FieldDragFloat3(const char* label, float* v, float speed = 1.0f)
 {
     return Field(label, [=] {
         ImGui::SetNextItemWidth(-1.0f);
-        return ImGui::DragFloat3("##v", v, speed);
+        const bool changed = ImGui::DragFloat3("##v", v, speed);
+        WrapDragMouse();
+        return changed;
     });
 }
 

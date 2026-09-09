@@ -37,6 +37,21 @@ void UIPanels::draw(World& world, App& app, Engine& ctx)
                         }
                     });
 
+            if (ImGui::MenuItem("Open Scene..."))
+            {
+                constexpr FileDialogFilter filter{"Scene (.btpl)", "*.btpl"};
+                app.openFileDialogAsyncWithAfterJob(
+                    std::span<const FileDialogFilter>(&filter, 1),
+                    [this, &app](std::vector<std::string>&& paths)
+                    {
+                        if (paths.empty())
+                            return;
+                        EntitySerializer::clearSceneAndLoad(*app.world_, *app.ctx_, paths[0]);
+                        currentScenePath_ = paths[0];
+                        clearSelection();
+                    });
+            }
+
             if (ImGui::MenuItem("Save Scene..."))
             {
                 constexpr FileDialogFilter filter{"Scene (.btpl)", "*.btpl"};
@@ -45,6 +60,7 @@ void UIPanels::draw(World& world, App& app, Engine& ctx)
                 {
                     EntitySerializer::save(world, *app.ctx_, path);
                     app.ctx_->assetManager_->saveAllAssets();
+                    currentScenePath_ = path;
                 }
             }
             ImGui::EndMenu();

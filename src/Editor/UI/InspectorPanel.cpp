@@ -162,6 +162,7 @@ void InspectorPanel::drawTransform(EntityHandle ent, World& world)
                           ImGui::SetNextItemWidth(-1.0f);
                           if (ImGui::DragFloat3("##pos", pos.data(), 0.05f))
                               world.systems_->transforms_->setLocalPosition(ent, pos);
+                          ui::WrapDragMouse();
                       });
 
             constexpr float kRadToDeg = 180.0f / std::numbers::pi_v<float>;
@@ -197,6 +198,7 @@ void InspectorPanel::drawTransform(EntityHandle ent, World& world)
                               rotationEditSourceQuat_ = newRot;
                               world.systems_->transforms_->setLocalRotation(ent, newRot);
                           }
+                          ui::WrapDragMouse();
                       });
         }
 }

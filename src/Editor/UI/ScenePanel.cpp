@@ -3,20 +3,89 @@
 #include "Components/Hierarchy_C.h"
 #include "Components/Name_C.h"
 #include "Instance/EntityFactory.h"
+#include "Instance/InstanceManager.h"
+#include "Reflection/ComponentRegistry.h"
 #include "Scene.h"
 #include "Systems/Hierarchy_S.h"
 #include "UI/IconsMaterialDesign.h"
 #include "World.h"
 
 #include "imgui.h"
+#include "misc/cpp/imgui_stdlib.h"
+
+#include <algorithm>
+#include <cctype>
+#include <vector>
 
 namespace batap
 {
 
-void ScenePanel::drawEntityNode(entt::registry& reg, entt::entity e,
+static void sortByName(entt::registry& reg, std::vector<entt::entity>& entities)
+{
+    std::sort(entities.begin(), entities.end(),
+              [&](entt::entity a, entt::entity b)
+              {
+                  const std::string& na = reg.get<Name_C>(a).name_;
+                  const std::string& nb = reg.get<Name_C>(b).name_;
+                  return std::lexicographical_compare(
+                      na.begin(), na.end(), nb.begin(), nb.end(), [](char x, char y) {
+                          return std::tolower(static_cast<unsigned char>(x)) <
+                                 std::tolower(static_cast<unsigned char>(y));
+                      });
+              });
+}
+
+static EntityHandle duplicateEntity(World& world, EntityHandle src)
+{
+    auto& reg = *src.reg_;
+    EntityHandle dst = world.entityFactory_->create(reg, Spawnables[0]);
+    reg.get<Name_C>(dst.entity_).name_ = reg.get<Name_C>(src.entity_).name_;
+
+    for (const ComponentType& t : ComponentRegistry::instance().all())
+    {
+        if (!t.tryGet(reg, src.entity_))
+            continue;
+        t.copy(reg, src.entity_, dst.entity_);
+        if (t.meta.onDeserialized)
+            t.meta.onDeserialized(dst, world);
+        world.instanceManager_->markDirty(dst, t.mask);
+    }
+
+    std::vector<entt::entity> childList;
+    for (entt::entity child : Hierarchy_S::children(src))
+        childList.push_back(child);
+    for (entt::entity child : childList)
+        Hierarchy_S::attach(dst, duplicateEntity(world, {&reg, child}));
+
+    if (auto* hc = reg.try_get<Hierarchy_C>(src.entity_); hc && hc->parent != entt::null)
+        Hierarchy_S::attach({&reg, hc->parent}, dst);
+
+    return dst;
+}
+
+void ScenePanel::drawEntityNode(World& world, entt::entity e,
                                 std::optional<EntityHandle>& selectedEntity)
 {
+    auto& reg = world.scene_->registry_;
     EntityHandle h = {&reg, e};
+
+    if (renaming_ && *renaming_ == h)
+    {
+        ImGui::SetNextItemWidth(-1.0f);
+        if (renameFocusPending_)
+        {
+            ImGui::SetKeyboardFocusHere();
+            renameFocusPending_ = false;
+        }
+        ImGui::InputText("##rename", &renameBuffer_);
+        if (ImGui::IsItemDeactivated())
+        {
+            if (!renameBuffer_.empty())
+                reg.get<Name_C>(e).name_ = renameBuffer_;
+            renaming_.reset();
+        }
+        return;
+    }
 
     const char* icon = spawnableFor(reg, e).icon;
 
@@ -47,6 +116,22 @@ void ScenePanel::drawEntityNode(entt::registry& reg, entt::entity e,
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
         selectedEntity = h;
 
+    if (ImGui::BeginPopupContextItem())
+    {
+        selectedEntity = h;
+        if (ImGui::MenuItem("Rename"))
+        {
+            renaming_ = h;
+            renameBuffer_ = reg.get<Name_C>(e).name_;
+            renameFocusPending_ = true;
+        }
+        if (ImGui::MenuItem("Duplicate"))
+            pendingDuplicate_ = h;
+        if (ImGui::MenuItem("Delete"))
+            pendingDelete_ = h;
+        ImGui::EndPopup();
+    }
+
     // --- drag source ---
     if (ImGui::BeginDragDropSource())
     {
@@ -73,9 +158,10 @@ void ScenePanel::drawEntityNode(entt::registry& reg, entt::entity e,
         std::vector<entt::entity> childList;
         for (entt::entity child : Hierarchy_S::children(h))
             childList.push_back(child);
+        sortByName(reg, childList);
 
         for (entt::entity child : childList)
-            drawEntityNode(reg, child, selectedEntity);
+            drawEntityNode(world, child, selectedEntity);
 
         ImGui::TreePop();
     }
@@ -109,13 +195,20 @@ void ScenePanel::draw(World& world, std::optional<EntityHandle>& selectedEntity)
     ImGui::BeginChild("##scene_tree", ImVec2(0, -kDropZoneH), false,
                       ImGuiWindowFlags_HorizontalScrollbar);
 
+    std::vector<entt::entity> roots;
     for (auto e : reg.storage<entt::entity>())
     {
+        if (!reg.valid(e))
+            continue;
         auto* hc = reg.try_get<Hierarchy_C>(e);
         if (hc && hc->parent != entt::null)
             continue;
-        drawEntityNode(reg, e, selectedEntity);
+        roots.push_back(e);
     }
+    sortByName(reg, roots);
+
+    for (entt::entity e : roots)
+        drawEntityNode(world, e, selectedEntity);
 
     ImGui::EndChild();
 
@@ -129,6 +222,19 @@ void ScenePanel::draw(World& world, std::optional<EntityHandle>& selectedEntity)
             Hierarchy_S::detach({&reg, dragged});
         }
         ImGui::EndDragDropTarget();
+    }
+
+    if (pendingDuplicate_)
+    {
+        selectedEntity = duplicateEntity(world, *pendingDuplicate_);
+        pendingDuplicate_.reset();
+    }
+    if (pendingDelete_)
+    {
+        world.entityFactory_->destroy(*pendingDelete_);
+        pendingDelete_.reset();
+        if (selectedEntity && !reg.valid(selectedEntity->entity_))
+            selectedEntity.reset();
     }
 }
 

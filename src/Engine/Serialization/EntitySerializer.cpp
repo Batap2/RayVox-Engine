@@ -80,6 +80,8 @@ static nlohmann::json sceneToJson(World& world, const Engine& ctx)
 
     for (auto e : reg.storage<entt::entity>())
     {
+        if (!reg.valid(e))
+            continue;
         auto* hc = reg.try_get<Hierarchy_C>(e);
         if (!hc || hc->parent == entt::null)
             collectDFS(reg, e, order, indexMap);
@@ -228,6 +230,8 @@ static void clearScene(World& world)
     std::vector<entt::entity> roots;
     for (auto e : reg.storage<entt::entity>())
     {
+        if (!reg.valid(e))
+            continue;
         auto* hc = reg.try_get<Hierarchy_C>(e);
         if (!hc || hc->parent == entt::null)
             roots.push_back(e);

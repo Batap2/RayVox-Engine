@@ -154,6 +154,7 @@ struct ComponentType
     void* (*tryGet)(entt::registry&, entt::entity) = nullptr;
     void* (*getOrEmplace)(entt::registry&, entt::entity) = nullptr;
     void (*remove)(entt::registry&, entt::entity) = nullptr;
+    void (*copy)(entt::registry&, entt::entity from, entt::entity to) = nullptr;
 };
 
 struct ComponentRegistry
@@ -240,6 +241,8 @@ void addComponentType(std::string_view name, ComponentMeta meta, std::vector<Fie
     t.getOrEmplace = [](entt::registry& r, entt::entity e) -> void*
     { return &r.get_or_emplace<T>(e); };
     t.remove = [](entt::registry& r, entt::entity e) { r.remove<T>(e); };
+    t.copy = [](entt::registry& r, entt::entity from, entt::entity to)
+    { r.emplace_or_replace<T>(to, r.get<T>(from)); };
 
     const uint32_t index = ComponentRegistry::instance().add(std::move(t));
     componentIndexSlot<T>() = index;
