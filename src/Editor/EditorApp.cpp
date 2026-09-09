@@ -15,9 +15,13 @@ int runEditor(const EditorConfig& cfg)
         Engine engine{cfg.window_};
         World world{engine};
         App app{engine, world};
+        if (cfg.makeGame_)
+            app.game_ = cfg.makeGame_();
+        if (cfg.gameExe_)
+            app.gameExe_ = cfg.gameExe_;
 
         while (Frame frame = engine.nextFrame())
-            app.update();
+            app.update(frame);
 
         return 0;
     }

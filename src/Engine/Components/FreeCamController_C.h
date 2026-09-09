@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Reflection/ComponentRegistry.h"
+
 namespace batap
 {
 struct FreeCamController_C
@@ -14,4 +16,6 @@ struct FreeCamController_C
     bool requireRightMouseButton_ = false;
     bool controlled_ = true;
 };
+
+BATAP_COMPONENT(FreeCamController_C, "freeCamController");
 }  // namespace batap

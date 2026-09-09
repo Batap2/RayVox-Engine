@@ -5,6 +5,7 @@
 #include "VulkanResources.h"
 #include "VulkanScenePasses.h"
 
+#include "Paths.h"
 #include "Platform/PlatformWindow.h"
 #include "Renderer/EngineConfig.h"
 
@@ -159,6 +160,18 @@ void Renderer::initImGui()
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    const std::string robotoPath =
+        resolveEngineFile("assets/Roboto-Regular.ttf", "assets/Roboto-Regular.ttf");
+    io.Fonts->AddFontFromFileTTF(robotoPath.c_str(), 16.0f);
+
+    ImFontConfig cfg;
+    cfg.MergeMode = true;
+    cfg.GlyphOffset = ImVec2(0.0f, 2.0f);
+    const std::string iconsPath =
+        resolveEngineFile("assets/MaterialIcons-Regular.ttf", "assets/MaterialIcons-Regular.ttf");
+    io.Fonts->AddFontFromFileTTF(iconsPath.c_str(), 14.0f, &cfg);
+
     ImGui::StyleColorsDark();
 
     platformImGuiInit(window_);

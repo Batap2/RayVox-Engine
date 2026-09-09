@@ -17,6 +17,7 @@ struct UIPanels
 {
     void draw(World& world, App& app, Engine& ctx);
     void drawStartupScreen(App& app, Engine& ctx);
+    void clearSelection() { selectedEntity_.reset(); }
 
    private:
     float panelWidth_ = 260.0f;

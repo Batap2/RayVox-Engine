@@ -6,6 +6,7 @@
 #include "Importers/FileImporter.h"
 #include "Serialization/EntitySerializer.h"
 #include "FileDialog.h"
+#include "UI/IconsMaterialDesign.h"
 #include "World.h"
 
 #include <imgui.h>
@@ -80,6 +81,18 @@ void UIPanels::draw(World& world, App& app, Engine& ctx)
                         }
                     });
             ImGui::EndMenu();
+        }
+
+        // Play/Stop (+ Run in its own process)
+        {
+            const char* label = app.playing_ ? ICON_MD_STOP : ICON_MD_PLAY_ARROW;
+            const float w = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - w) * 0.5f);
+            if (ImGui::MenuItem(label))
+                app.playing_ ? app.stopPlay() : app.startPlay();
+
+            if (!app.gameExe_.empty() && ImGui::MenuItem(ICON_MD_LAUNCH))
+                app.runStandalone();
         }
 
         if (!app.projectDir_.empty())

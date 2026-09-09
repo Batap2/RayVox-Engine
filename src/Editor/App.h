@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "Game.h"
 #include "UI/UIPanels.h"
 #include "FileDialog.h"
 #include "World.h"
@@ -20,7 +21,19 @@ struct App
 {
     App(Engine& engine, World& world);
 
-    void update();
+    void update(Frame& frame);
+
+    // Play/Stop, Unity snapshot model: Play serializes the scene to memory and
+    // starts ticking the game; Stop reloads the snapshot as if it were a file.
+    void startPlay();
+    void stopPlay();
+    bool playing_ = false;
+    std::string playSnapshot_;
+    std::unique_ptr<Game> game_;
+
+    // Current scene → temp file → game exe in its own process.
+    void runStandalone();
+    std::string gameExe_;
 
     Engine* ctx_ = nullptr;
     World*   world_ = nullptr;

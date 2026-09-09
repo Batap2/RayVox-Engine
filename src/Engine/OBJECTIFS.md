@@ -103,13 +103,15 @@ qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
 
 ## 4. Play / Stop (modèle snapshot, à la Unity)
 
-- [ ] **Interface `Game { init(World&); update(World&, Frame&); }`** — sortir la
-      logique du `main()` du jeu pour que l'éditeur puisse la piloter. Le
-      `main()` de `GameExemple` (boucle `nextFrame()` + `world.update()`) devient
-      boucle moteur + `game.update()`. C'est le seul vrai chantier.
-- [ ] **Play** : `save(world)` → buffer mémoire ; les systèmes du jeu tickent.
-      **Stop** : clear registry + pools GPU → `load(buffer)`.
-- [ ] Vider/remapper la sélection éditeur au Stop (les `EntityHandle` meurent).
+- [x] **Interface `Game { init(World&); update(World&, Frame&); }`** —
+      `src/Engine/Game.h`. Le `main()` de `GameExemple` est devenu boucle
+      moteur + `game.update()` (`MyGame.h`) ; l'éditeur reçoit le jeu via
+      `EditorConfig.makeGame_` (branché dans `editor_main.cpp`).
+- [x] **Play** : `EntitySerializer::toBuffer(world)` → string JSON en mémoire ;
+      `game.init()` puis `game.update()` chaque frame.
+      **Stop** : `clearSceneAndLoadBuffer()` (mêmes clear + populate que le
+      load fichier). Bouton ▶/⏹ dans la barre de menu.
+- [x] Vider la sélection éditeur au Stop (les `EntityHandle` meurent).
 - [ ] **Bouton « Run » en process séparé** (~20 lignes : scène temp + spawn du jeu) —
       un jeu qui crashe n'emporte pas l'éditeur. Complémentaire, pas concurrent.
 

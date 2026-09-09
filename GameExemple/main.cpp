@@ -1,12 +1,9 @@
 #include "GameComponents.h"
+#include "MyGame.h"
 
 #include "Engine.h"
-#include "InputManager.h"
+#include "Platform/PlatformWindow.h"
 #include "World.h"
-
-#include <imgui.h>
-
-#include <iostream>
 
 int main()
 {
@@ -16,16 +13,22 @@ int main()
                           .fpsInTitle = true,
                           .transparent = true}};
 
+    // `--scene <path>` is how the editor's Run button points at its temp save.
+    std::string scenePath = "scenes/Cornel/cornelScene.btpl";
+    const auto args = batap::platformCommandLineArgs();
+    for (size_t i = 0; i + 1 < args.size(); ++i)
+        if (args[i] == "--scene")
+            scenePath = args[i + 1];
+
     batap::World world{engine};
-    world.loadScene("scenes/Cornel/cornelScene.btpl");
+    world.loadScene(scenePath);
+
+    batap::MyGame game;
+    game.init(world);
 
     while (batap::Frame frame = engine.nextFrame())
     {
-        if (frame.input().pressed(batap::Key::Space))
-            std::cout << "oep\n";
-
-        ImGui::ShowDemoWindow();
-
+        game.update(world, frame);
         world.update();
     }
 

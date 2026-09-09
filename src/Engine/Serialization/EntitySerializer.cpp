@@ -54,19 +54,24 @@ static nlohmann::json reflectedComponents(EntityHandle h, const Engine& ctx)
 
 // Written for forward compatibility; nothing reads it back yet — a migration
 // would branch on it in the field loop of populateWorld().
-static void writeFile(nlohmann::json& root, const std::unordered_set<std::string>& usedTypes,
-                      const std::string& path)
+static void writeVersions(nlohmann::json& root, const std::unordered_set<std::string>& usedTypes)
 {
     auto& versionsJ = root["componentVersions"] = nlohmann::json::object();
     for (const auto& t : ComponentRegistry::instance().all())
         if (usedTypes.contains(t.name))
             versionsJ[t.name] = t.meta.version;
+}
+
+static void writeFile(nlohmann::json& root, const std::unordered_set<std::string>& usedTypes,
+                      const std::string& path)
+{
+    writeVersions(root, usedTypes);
 
     std::ofstream f(path);
     f << root.dump(2);
 }
 
-void EntitySerializer::save(World& world, const Engine& ctx, const std::string& path)
+static nlohmann::json sceneToJson(World& world, const Engine& ctx)
 {
     auto& reg = world.scene_->registry_;
 
@@ -110,7 +115,14 @@ void EntitySerializer::save(World& world, const Engine& ctx, const std::string& 
         entitiesJ.push_back(std::move(ej));
     }
 
-    writeFile(root, usedTypes, path);
+    writeVersions(root, usedTypes);
+    return root;
+}
+
+void EntitySerializer::save(World& world, const Engine& ctx, const std::string& path)
+{
+    std::ofstream f(path);
+    f << sceneToJson(world, ctx).dump(2);
 }
 
 // Importer path: descs carry asset paths because no handle exists yet.
@@ -208,6 +220,22 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
     }
 }
 
+static void clearScene(World& world)
+{
+    auto& reg = world.scene_->registry_;
+    auto& factory = *world.entityFactory_;
+
+    std::vector<entt::entity> roots;
+    for (auto e : reg.storage<entt::entity>())
+    {
+        auto* hc = reg.try_get<Hierarchy_C>(e);
+        if (!hc || hc->parent == entt::null)
+            roots.push_back(e);
+    }
+    for (auto e : roots)
+        factory.destroy({&reg, e});
+}
+
 void EntitySerializer::clearSceneAndLoad(World& world, const Engine& ctx, const std::string& path)
 {
     std::ifstream f(path);
@@ -224,19 +252,29 @@ void EntitySerializer::clearSceneAndLoad(World& world, const Engine& ctx, const 
         return;
     }
 
-    auto& reg = world.scene_->registry_;
-    auto& factory = *world.entityFactory_;
+    clearScene(world);
+    populateWorld(world, ctx, root);
+}
 
-    std::vector<entt::entity> roots;
-    for (auto e : reg.storage<entt::entity>())
+std::string EntitySerializer::toBuffer(World& world, const Engine& ctx)
+{
+    return sceneToJson(world, ctx).dump();
+}
+
+void EntitySerializer::clearSceneAndLoadBuffer(World& world, const Engine& ctx,
+                                               const std::string& buffer)
+{
+    nlohmann::json root;
+    try
     {
-        auto* hc = reg.try_get<Hierarchy_C>(e);
-        if (!hc || hc->parent == entt::null)
-            roots.push_back(e);
+        root = nlohmann::json::parse(buffer);
     }
-    for (auto e : roots)
-        factory.destroy({&reg, e});
+    catch (...)
+    {
+        return;
+    }
 
+    clearScene(world);
     populateWorld(world, ctx, root);
 }
 

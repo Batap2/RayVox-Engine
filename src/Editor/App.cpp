@@ -2,6 +2,8 @@
 
 #include "Engine.h"
 #include "Importers/FileImporter.h"
+#include "Platform/PlatformWindow.h"
+#include "Serialization/EntitySerializer.h"
 #include "TestScene.h"
 #include "UI/FieldUI.h"
 #include "UI/UITheme.h"
@@ -12,9 +14,15 @@
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>
+#endif
 
 namespace batap
 {
@@ -30,7 +38,7 @@ App::App(Engine& engine, World& world)
     loadRecentProjects();
 }
 
-void App::update()
+void App::update(Frame& frame)
 {
     pumpMsgFileDialog();
 
@@ -41,8 +49,57 @@ void App::update()
     else
     {
         uiPanels_.draw(*world_, *this, *ctx_);
+        if (playing_ && game_)
+            game_->update(*world_, frame);
         world_->update();
     }
+}
+
+void App::startPlay()
+{
+    if (playing_)
+        return;
+    playSnapshot_ = EntitySerializer::toBuffer(*world_, *ctx_);
+    playing_ = true;
+    if (game_)
+        game_->init(*world_);
+}
+
+void App::stopPlay()
+{
+    if (!playing_)
+        return;
+    playing_ = false;
+    EntitySerializer::clearSceneAndLoadBuffer(*world_, *ctx_, playSnapshot_);
+    playSnapshot_.clear();
+    // Every EntityHandle from before the reload is dead.
+    uiPanels_.clearSelection();
+}
+
+static void spawnDetached(const std::string& exe, const std::string& args)
+{
+#if defined(_WIN32)
+    ::ShellExecuteA(nullptr, "open", exe.c_str(), args.c_str(), nullptr, SW_SHOWNORMAL);
+#else
+    std::system(("\"" + exe + "\" " + args + " &").c_str());
+#endif
+}
+
+void App::runStandalone()
+{
+    if (gameExe_.empty())
+        return;
+
+    namespace fs = std::filesystem;
+    const fs::path scene = fs::temp_directory_path() / "batap_run.btpl";
+    EntitySerializer::save(*world_, *ctx_, scene.string());
+
+    fs::path exe = fs::path(platformExeDir()) / gameExe_;
+#if defined(_WIN32)
+    exe += ".exe";
+#endif
+    spawnDetached(exe.string(),
+                  "--project \"" + projectDir_ + "\" --scene \"" + scene.string() + "\"");
 }
 
 // L'emplacement par-utilisateur de chaque OS : %APPDATA% / Application Support
