@@ -37,17 +37,18 @@ ComponentRegistry& ComponentRegistry::instance()
     return registry;
 }
 
-uint32_t ComponentRegistry::add(ComponentType type)
+void ComponentRegistry::add(ComponentType type)
 {
     ThrowAssert(find(type.name) == nullptr,
                 "component registered twice: " + type.name);
-    ThrowAssert(types_.size() < MaxComponentTypes,
-                "too many component types for ComponentMask — widen it");
-
-    const auto index = static_cast<uint32_t>(types_.size());
-    type.mask = maskOfIndex(index);
     types_.push_back(std::move(type));
-    return index;
+}
+
+uint32_t ComponentRegistry::claimGPUBit()
+{
+    static uint32_t next = 0;
+    ThrowAssert(next < 64, "more than 64 GPU-read component types — widen ComponentMask");
+    return next++;
 }
 
 void ComponentRegistry::importFrom(ComponentRegistry& module)
@@ -58,35 +59,33 @@ void ComponentRegistry::importFrom(ComponentRegistry& module)
     {
         provided.insert(mt.name);
 
-        uint32_t index = InvalidComponentIndex;
+        ComponentType* existing = nullptr;
         for (ComponentType& t : types_)
-        {
-            if (t.name != mt.name)
-                continue;
-            index = static_cast<uint32_t>(std::countr_zero(t.mask));
-            if (t.fromModule_)
+            if (t.name == mt.name)
             {
-                // Refresh: the old entry's pointers target the unloaded DLL.
-                const ComponentMask mask = t.mask;
-                t = mt;
-                t.mask = mask;
-                t.fromModule_ = true;
+                existing = &t;
+                break;
             }
-            break;
-        }
-        if (index == InvalidComponentIndex)
+
+        if (!existing)
         {
             ComponentType copy = mt;
             copy.fromModule_ = true;
-            index = add(std::move(copy));
+            add(std::move(copy));
         }
-
-        if (mt.indexSlot_)
-            *mt.indexSlot_ = index;
+        else if (existing->fromModule_)
+        {
+            // Refresh: the old entry's pointers target the unloaded DLL.
+            *existing = mt;
+            existing->fromModule_ = true;
+        }
+        else if (mt.bitSlot_ && existing->bitSlot_)
+        {
+            // Engine type: the module's markDirty<T> must use the host's bit.
+            *mt.bitSlot_ = *existing->bitSlot_;
+        }
     }
 
-    // A module type not provided anymore: entries keep their index (masks are
-    // positional) but must never be called again.
     for (ComponentType& t : types_)
         if (t.fromModule_ && !provided.contains(t.name))
         {
@@ -94,7 +93,7 @@ void ComponentRegistry::importFrom(ComponentRegistry& module)
             t.getOrEmplace = nullptr;
             t.remove = nullptr;
             t.copy = nullptr;
-            t.indexSlot_ = nullptr;
+            t.bitSlot_ = nullptr;
             t.fields.clear();
         }
 }

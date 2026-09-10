@@ -44,7 +44,7 @@ static bool removeComponentMenu(const char* id)
 static void removeComponent(World& world, EntityHandle ent, const ComponentType& t)
 {
     t.remove(*ent.reg_, ent.entity_);
-    world.instanceManager_->markDirty(ent, t.mask);
+    world.instanceManager_->markDirty(ent, t.mask());
 }
 
 // "castShadows" / "pointLight" -> "Cast Shadows" / "Point Light"
@@ -82,7 +82,7 @@ void InspectorPanel::drawReflected(EntityHandle ent, World& world)
             continue;
 
         // Markers define the entity's aspect: not removable, like not addable.
-        const bool removable = (t.mask & markerComponentMask()) == 0;
+        const bool removable = (t.mask() & markerComponentMask()) == 0;
 
         bool changed = false;
         bool removed = false;
@@ -100,7 +100,7 @@ void InspectorPanel::drawReflected(EntityHandle ent, World& world)
         if (removed)
             removeComponent(world, ent, t);
         else if (changed)
-            world.instanceManager_->markDirty(ent, t.mask);
+            world.instanceManager_->markDirty(ent, t.mask());
     }
 }
 
@@ -126,7 +126,7 @@ void InspectorPanel::drawAddComponent(EntityHandle ent, World& world)
         for (const ComponentType& t : ComponentRegistry::instance().all())
         {
             // Markers define the entity's aspect — chosen at spawn, not added.
-            if (t.mask & markers)
+            if (t.mask() & markers)
                 continue;
             if (!t.tryGet || t.tryGet(*ent.reg_, ent.entity_))
                 continue;
@@ -138,7 +138,7 @@ void InspectorPanel::drawAddComponent(EntityHandle ent, World& world)
                 // derived state after their fields exist.
                 if (t.meta.onDeserialized)
                     t.meta.onDeserialized(ent, world);
-                world.instanceManager_->markDirty(ent, t.mask);
+                world.instanceManager_->markDirty(ent, t.mask());
             }
         }
         ImGui::EndPopup();

@@ -10,9 +10,9 @@
 //
 // The json key is spelled out — it is a durable contract with scenes on disk,
 // so it must survive a class rename untouched. Each member becomes a json key
-// from its own name, with the trailing '_' stripped (color_ -> "color"), and
-// the dirty bit is assigned at registration — a component never allocates a
-// bit itself.
+// from its own name, with the trailing '_' stripped (color_ -> "color"). GPU
+// dirty bits are claimed by the pools that read a component — most components
+// never get one.
 //
 // To change how a field is edited, change its type: `col3` instead of `v3f`
 // gives a color picker. Only what nothing else can carry — a slider range, a
@@ -112,41 +112,40 @@ struct ComponentMeta
     bool customEditor = false;
 };
 
-// --- component identity --------------------------------------------------
+// --- GPU dirty bits --------------------------------------------------------
 
-// A set of component types, as one bit per registered component. Used to route
-// a change to the GPU pools that read the component.
+// A set of component types, one bit each, used only to route a change to the
+// GPU pools that read the component. Bits are claimed by the pools at their
+// construction (usedComponentMask) — a component no pool reads never gets
+// one, so gameplay components cost nothing and the 64 cap only counts
+// GPU-read types.
 using ComponentMask = uint64_t;
 
-inline constexpr uint32_t InvalidComponentIndex = 0xFFFFFFFFu;
-inline constexpr size_t MaxComponentTypes = 64;  // width of ComponentMask
+inline constexpr uint32_t InvalidComponentBit = 0xFFFFFFFFu;
 
-// Assigned by addComponentType at static init, so a component never picks a
-// bit for itself and the count is not capped by a hand-written enum.
 template <class T>
-uint32_t& componentIndexSlot()
+uint32_t& componentBitSlot()
 {
-    static uint32_t index = InvalidComponentIndex;
-    return index;
+    static uint32_t bit = InvalidComponentBit;
+    return bit;
 }
 
-inline ComponentMask maskOfIndex(uint32_t index)
+inline ComponentMask maskOfBit(uint32_t bit)
 {
-    return index == InvalidComponentIndex ? ComponentMask{0} : (ComponentMask{1} << index);
+    return bit == InvalidComponentBit ? ComponentMask{0} : (ComponentMask{1} << bit);
 }
 
-// Empty for a type that never registered — writing to a CPU-only component is
-// not an error, it just marks nothing.
+// Empty for a type no pool reads — writing to a CPU-only component is not an
+// error, it just marks nothing.
 template <class T>
 ComponentMask componentMask()
 {
-    return maskOfIndex(componentIndexSlot<T>());
+    return maskOfBit(componentBitSlot<T>());
 }
 
 struct ComponentType
 {
     std::string name;  // json "type" value ("pointLight")
-    ComponentMask mask = 0;
     ComponentMeta meta;
     std::vector<Field> fields;
 
@@ -156,38 +155,49 @@ struct ComponentType
     void (*remove)(entt::registry&, entt::entity) = nullptr;
     void (*copy)(entt::registry&, entt::entity from, entt::entity to) = nullptr;
 
-    // The componentIndexSlot<T> this type was registered from. importFrom
-    // writes the host's index through it so componentMask<T> agrees across
+    // The componentBitSlot<T> this type was registered from. importFrom
+    // copies the host's bit through it so componentMask<T> agrees across
     // the DLL boundary.
-    uint32_t* indexSlot_ = nullptr;
+    uint32_t* bitSlot_ = nullptr;
 
     // Came from a game module: its code pointers must be refreshed on every
     // reload, and nulled if the module stops providing the type. Generic
     // loops must skip an entry whose tryGet is null.
     bool fromModule_ = false;
+
+    ComponentMask mask() const { return bitSlot_ ? maskOfBit(*bitSlot_) : ComponentMask{0}; }
 };
 
 struct ComponentRegistry
 {
     static ComponentRegistry& instance();
 
-    // Returns the index assigned to the component.
-    uint32_t add(ComponentType type);
+    void add(ComponentType type);
     const ComponentType* find(std::string_view name) const;
     const std::vector<ComponentType>& all() const { return types_; }
 
-    // Merge a game DLL's registry into this one, by name: a known type keeps
-    // its index here, a new one is added. Either way the index is written
-    // back through the module's indexSlot_.
+    // Merge a game DLL's registry into this one, by name: engine types get
+    // the host's bit copied into the module's slot, unknown types are added.
     void importFrom(ComponentRegistry& module);
 
     // Hard error if any registered field has no serializer — called by the
     // Engine ctor, after builtins are in and static registrations ran.
     void validate() const;
 
+    static uint32_t claimGPUBit();
+
    private:
     std::vector<ComponentType> types_;
 };
+
+template <class C>
+ComponentMask claimComponentBit()
+{
+    uint32_t& slot = componentBitSlot<C>();
+    if (slot == InvalidComponentBit)
+        slot = ComponentRegistry::claimGPUBit();
+    return maskOfBit(slot);
+}
 
 // Fills toJson/fromJson for the built-in field types. Called once by the
 // Engine ctor.
@@ -261,10 +271,9 @@ void addComponentType(std::string_view name, ComponentMeta meta, std::vector<Fie
     t.remove = [](entt::registry& r, entt::entity e) { r.remove<T>(e); };
     t.copy = [](entt::registry& r, entt::entity from, entt::entity to)
     { r.emplace_or_replace<T>(to, r.get<T>(from)); };
-    t.indexSlot_ = &componentIndexSlot<T>();
+    t.bitSlot_ = &componentBitSlot<T>();
 
-    const uint32_t index = ComponentRegistry::instance().add(std::move(t));
-    componentIndexSlot<T>() = index;
+    ComponentRegistry::instance().add(std::move(t));
 }
 
 // --- registration ------------------------------------------------------------

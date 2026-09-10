@@ -5,7 +5,7 @@
 //
 // The DLL carries its own copy of the engine code it reaches, and with it a
 // second copy of the reflection globals (registry, fieldTypeSlot<M>,
-// componentIndexSlot<T>) — each binary's code is wired at link time to its
+// componentBitSlot<T>) — each binary's code is wired at link time to its
 // own variables, and LoadLibrary merges nothing. Only pointers passed at
 // runtime cross the boundary. Load sequence (GameModuleLoader::load):
 //
@@ -18,9 +18,9 @@
 // 4. importFrom copies the unknown ComponentTypes into the host registry
 //    (their function pointers target DLL code); the DLL registry is never
 //    read again.
-// 5. importFrom also writes the host's component numbers into the DLL's
-//    index variables via indexSlot_ — DLL code computes markDirty bits from
-//    them, and both modules must agree.
+// 5. importFrom also copies the host's GPU bits into the DLL's bit variables
+//    via bitSlot_ — DLL code computes markDirty masks from them, and both
+//    modules must agree.
 // 6. The host patches drawUI on the imported fields' slots (by typeName).
 //
 // After that a single engine lives (host World, pools, registry); the DLL

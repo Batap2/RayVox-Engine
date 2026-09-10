@@ -263,15 +263,15 @@ constexpr size_t initialCapacityOf()
         return 1;
 }
 
-// The components whose change must re-upload this instance, as the bits the
-// registry handed out. Not constexpr: indices are assigned at static init, so
-// this is read once the pools are built.
+// The components whose change must re-upload this instance. Building this
+// mask at pool construction is what CLAIMS the GPU bits: only components
+// named in a Uses list ever get one.
 namespace detail
 {
 template <class... Cs>
 ComponentMask maskOfList(TypeList<Cs...>*)
 {
-    return (ComponentMask{0} | ... | componentMask<Cs>());
+    return (ComponentMask{0} | ... | claimComponentBit<Cs>());
 }
 }  // namespace detail
 

@@ -48,7 +48,7 @@ static EntityHandle duplicateEntity(World& world, EntityHandle src)
         t.copy(reg, src.entity_, dst.entity_);
         if (t.meta.onDeserialized)
             t.meta.onDeserialized(dst, world);
-        world.instanceManager_->markDirty(dst, t.mask);
+        world.instanceManager_->markDirty(dst, t.mask());
     }
 
     std::vector<entt::entity> childList;
