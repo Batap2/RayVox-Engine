@@ -12,3 +12,11 @@ target_link_libraries(GameExemple PRIVATE
 # The game's editor: the editor lib + this game's components (editor_main.cpp
 # includes GameComponents.h — static init registers them into this binary).
 batap_add_editor(GameExemple_Editor editor_main.cpp)
+
+# Dev mode: the same game as a DLL, hot-reloadable by any editor via --game.
+add_library(GameExemple_Game SHARED
+  game_module.cpp
+)
+target_link_libraries(GameExemple_Game PRIVATE
+  Batap_Engine
+)

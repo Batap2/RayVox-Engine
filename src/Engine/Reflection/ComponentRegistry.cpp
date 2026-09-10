@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <bit>
 #include <string>
 
 namespace batap
@@ -46,6 +47,23 @@ uint32_t ComponentRegistry::add(ComponentType type)
     type.mask = maskOfIndex(index);
     types_.push_back(std::move(type));
     return index;
+}
+
+void ComponentRegistry::importFrom(ComponentRegistry& module)
+{
+    for (ComponentType& mt : module.types_)
+    {
+        uint32_t index;
+        if (const ComponentType* existing = find(mt.name))
+            index = static_cast<uint32_t>(std::countr_zero(existing->mask));
+        else
+        {
+            ComponentType copy = mt;
+            index = add(std::move(copy));
+        }
+        if (mt.indexSlot_)
+            *mt.indexSlot_ = index;
+    }
 }
 
 const ComponentType* ComponentRegistry::find(std::string_view name) const

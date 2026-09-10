@@ -155,6 +155,11 @@ struct ComponentType
     void* (*getOrEmplace)(entt::registry&, entt::entity) = nullptr;
     void (*remove)(entt::registry&, entt::entity) = nullptr;
     void (*copy)(entt::registry&, entt::entity from, entt::entity to) = nullptr;
+
+    // The componentIndexSlot<T> this type was registered from. importFrom
+    // writes the host's index through it so componentMask<T> agrees across
+    // the DLL boundary.
+    uint32_t* indexSlot_ = nullptr;
 };
 
 struct ComponentRegistry
@@ -165,6 +170,11 @@ struct ComponentRegistry
     uint32_t add(ComponentType type);
     const ComponentType* find(std::string_view name) const;
     const std::vector<ComponentType>& all() const { return types_; }
+
+    // Merge a game DLL's registry into this one, by name: a known type keeps
+    // its index here, a new one is added. Either way the index is written
+    // back through the module's indexSlot_.
+    void importFrom(ComponentRegistry& module);
 
     // Hard error if any registered field has no serializer — called by the
     // Engine ctor, after builtins are in and static registrations ran.
@@ -232,6 +242,9 @@ Field field(std::string name, FieldMeta m = {})
 template <class T>
 void addComponentType(std::string_view name, ComponentMeta meta, std::vector<Field> fields)
 {
+    static_assert(std::is_trivially_destructible_v<T>,
+                  "components must be flat values");
+
     ComponentType t;
     t.name = name;
     t.meta = meta;
@@ -243,6 +256,7 @@ void addComponentType(std::string_view name, ComponentMeta meta, std::vector<Fie
     t.remove = [](entt::registry& r, entt::entity e) { r.remove<T>(e); };
     t.copy = [](entt::registry& r, entt::entity from, entt::entity to)
     { r.emplace_or_replace<T>(to, r.get<T>(from)); };
+    t.indexSlot_ = &componentIndexSlot<T>();
 
     const uint32_t index = ComponentRegistry::instance().add(std::move(t));
     componentIndexSlot<T>() = index;

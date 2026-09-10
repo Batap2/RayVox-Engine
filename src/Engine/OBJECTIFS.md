@@ -72,11 +72,11 @@ interop dans `ShaderInterop.h`, `Uses`, `fill()`, une ligne dans
 - [x] **Factories → spawnables data-driven** — `Spawnable.h` : une table
       (id, label, icône, composants à emplacer) que `ScenePanel` et le
       factory bouclent.
-- [ ] **Règle officielle : un composant est un agrégat trivially copyable** —
-      `static_assert` à l'enregistrement (il n'existe aujourd'hui que sur les
-      `GPUData`, concept `GPUInstance` dans `InstanceDeclaration.h`). C'est la
-      contrainte qui rend possibles à la fois les pools GPU simples et le hot
-      reload memcpy (§5).
+- [x] **Règle officielle : un composant = valeurs plates + handles** —
+      `static_assert` à l'enregistrement (`addComponentType`). Test retenu :
+      `is_trivially_destructible` et non `is_trivially_copyable` — les types
+      Eigen ont un copy ctor défini mais un stockage plat memcpy-able ; le
+      but réel est d'interdire `std::string`/`std::vector` (§5).
 - ~~`ComponentFlag` reste manuel~~ — obsolète : les bits (`ComponentMask`) sont
       assignés par le `ComponentRegistry` à l'init statique, plus d'enum du tout.
 

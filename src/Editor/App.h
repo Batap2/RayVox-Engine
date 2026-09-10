@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include "Game.h"
+#include "GameModuleLoader.h"
 #include "UI/UIPanels.h"
 #include "FileDialog.h"
 #include "World.h"
@@ -23,12 +24,14 @@ struct App
 
     void update(Frame& frame);
 
-    // Play/Stop, Unity snapshot model: Play serializes the scene to memory and
+    // Play serializes the scene to memory and
     // starts ticking the game; Stop reloads the snapshot as if it were a file.
     void startPlay();
     void stopPlay();
     bool playing_ = false;
     std::string playSnapshot_;
+    // Declared before game_: a DLL game must be destroyed before its module.
+    GameModuleLoader gameModule_;
     std::unique_ptr<Game> game_;
 
     // Current scene → temp file → game exe in its own process.
