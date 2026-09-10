@@ -37,6 +37,7 @@ struct GameModuleAPI
 {
     ComponentRegistry* registry_ = nullptr;
     Game* (*createGame_)() = nullptr;
+    const char* gameExeName_ = nullptr;
 };
 
 inline constexpr const char* GameModuleEntryName = "batapGameEntry";

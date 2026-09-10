@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -36,9 +37,14 @@ struct App
 
     // Current scene → temp file → game exe in its own process.
     void runStandalone();
-    std::string gameExe_;
+    std::string gameExeName_;
 
     void pumpGameModuleReload();
+    void adoptGame();
+
+    void showToast(std::string msg);
+    std::string toast_;
+    std::chrono::steady_clock::time_point toastEnd_{};
 
     Engine* ctx_ = nullptr;
     World*   world_ = nullptr;

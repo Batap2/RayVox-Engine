@@ -23,7 +23,7 @@ struct EditorConfig
     // Name of the game executable next to the editor's (no extension). Set,
     // it adds a "Run" button: current scene saved to a temp file, game spawned
     // in its own process — a crash there never takes the editor down.
-    const char* gameExe_ = nullptr;
+    const char* gameExeName_ = nullptr;
 };
 
 // For EditorConfig::makeGame_: `.makeGame_ = makeGame<MyGame>`.

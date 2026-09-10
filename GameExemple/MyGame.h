@@ -22,7 +22,7 @@ struct MyGame : Game
             if (!t)
                 continue;
             const quatf q =
-                (t->rot() * angleaxisf(rot.speed_ * frame.dt(), v3f::UnitY())).normalized();
+                (t->rot() * angleaxisf(rot.speed_ * frame.dt(), v3f::UnitZ())).normalized();
             world.systems_->transforms_->setLocalRotation(h, q);
         }
     }

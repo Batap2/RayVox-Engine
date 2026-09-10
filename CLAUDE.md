@@ -16,9 +16,11 @@ cmake --build build/relwithdebinfo        # build
 Prefer `build_msvc.bat <preset>` (sets up the VS env via vswhere before
 CMake — a bare `cmake --preset` outside a VS dev prompt corrupts the cache).
 Binaries land in `build/relwithdebinfo/bin/` (`Batap_Editor.exe`,
-`GameExemple.exe`, `GameExemple_Editor.exe`). Presets: `msvc-debug`,
+`GameExemple.exe`, `GameExemple_Game.dll`). Presets: `msvc-debug`,
 `msvc-debug-asan`, `msvc-release`, `msvc-relwithdebinfo`. Target map: comment
-at the top of the root `CMakeLists.txt`.
+at the top of the root `CMakeLists.txt`. The editor loads a project's game
+from `<project>/bin/Game.dll` and hot-reloads it when it changes
+(`src/Engine/GameModule.h` documents the whole mechanism).
 
 To visually verify a render change: run the editor with `--project <dir>` and
 env var `BATAP_DUMP_FRAME=N` to dump frame N as an image.

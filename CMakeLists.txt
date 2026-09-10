@@ -14,13 +14,12 @@ endif()
 # Project
 # ------------------------------------------------------------------------------
 # Target map:
-#   Batap_Engine       (lib,  src/Engine)   the engine, depends on nothing
-#   Batap_EditorLib    (lib,  src/Editor)   the editor, links the engine
-#   Batap_Editor       (exe)                bare editor (engine components only)
-#   GameExemple        (exe,  GameExemple/) the game
-#   GameExemple_Editor (exe,  GameExemple/) the editor + the game's components
-# An editor exe = batap_add_editor(name, a 3-line editor_main.cpp that
-# includes GameComponents.h) — see src/Editor/CMakeLists.txt.
+#   Batap_Engine     (lib, src/Engine)   the engine, depends on nothing
+#   Batap_EditorLib  (lib, src/Editor)   the editor, links the engine
+#   Batap_Editor     (exe)               the editor; opening a project loads
+#                                        its <project>/bin/Game.dll (hot reload)
+#   GameExemple      (exe, GameExemple/) the game, standalone
+#   GameExemple_Game (dll, GameExemple/) the same game for the editor
 project(Batap LANGUAGES C CXX)
 
 # ------------------------------------------------------------------------------

@@ -33,10 +33,10 @@ VSCode users: build tasks are already defined in the `.vscode` folder.
 Binaries land in `build/<preset>/bin/`. Three executables:
 
 ```bat
-bin\GameExemple_Editor.exe --project GameExemple   :: the editor of the example game (its components included)
-bin\GameExemple.exe        --project GameExemple   :: the game alone
-bin\Batap_Editor.exe                               :: bare editor, engine components only
+bin\Batap_Editor.exe                        :: the editor; opening a project loads its bin/Game.dll
+bin\GameExemple.exe --project GameExemple   :: the game alone
 ```
 
 `--project <dir>` points a build-tree exe at its assets; without it, assets
-are expected next to the executable.
+are expected next to the executable. Rebuilding `GameExemple_Game` while the
+editor runs hot-reloads the game code.

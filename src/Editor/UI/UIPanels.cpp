@@ -104,7 +104,7 @@ void UIPanels::draw(World& world, App& app, Engine& ctx)
             if (ImGui::MenuItem(label))
                 app.playing_ ? app.stopPlay() : app.startPlay();
 
-            if (!app.gameExe_.empty() && ImGui::MenuItem(ICON_MD_LAUNCH))
+            if (!app.gameExeName_.empty() && ImGui::MenuItem(ICON_MD_LAUNCH))
                 app.runStandalone();
         }
 
@@ -112,6 +112,13 @@ void UIPanels::draw(World& world, App& app, Engine& ctx)
         {
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8.0f);
             ImGui::TextDisabled("%s", app.projectDir_.c_str());
+        }
+
+        if (std::chrono::steady_clock::now() < app.toastEnd_)
+        {
+            const float w = ImGui::CalcTextSize(app.toast_.c_str()).x;
+            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - w - 12.0f);
+            ImGui::TextUnformatted(app.toast_.c_str());
         }
 
         ImGui::EndMainMenuBar();

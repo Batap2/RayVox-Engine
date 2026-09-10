@@ -114,7 +114,7 @@ qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
 - [x] Vider la sélection éditeur au Stop (les `EntityHandle` meurent).
 - [x] **Bouton « Run » en process séparé** — `App::runStandalone()` : scène
       courante → `%TEMP%/batap_run.btpl`, spawn de l'exe du jeu
-      (`EditorConfig.gameExe_`) avec `--project` + `--scene`. Un jeu qui crashe
+      (`EditorConfig.gameExeName_`) avec `--project` + `--scene`. Un jeu qui crashe
       n'emporte pas l'éditeur.
 
 ## 5. Hot reload du code (les shaders sont faits, cf. §0)

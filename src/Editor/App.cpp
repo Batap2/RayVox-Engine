@@ -1,27 +1,29 @@
 #include "App.h"
 
 #include "Engine.h"
+#include "FileDialog.h"
 #include "Importers/FileImporter.h"
 #include "Platform/PlatformWindow.h"
 #include "Serialization/EntitySerializer.h"
 #include "TestScene.h"
 #include "UI/FieldUI.h"
-#include "UI/UITheme.h"
 #include "UI/UIPanels.h"
+#include "UI/UITheme.h"
 #include "Utils/UIDGenerator.h"
-#include "FileDialog.h"
 
 #include <imgui.h>
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
+// clang-format off
 #include <windows.h>
 #include <shellapi.h>
+// clang-format on
 #endif
 
 namespace batap
@@ -65,11 +67,36 @@ void App::pumpGameModuleReload()
     game_.reset();
     world_->resetScene();
 
-    if (gameModule_.swapStaged())
-        game_ = gameModule_.makeGame();
+    try
+    {
+        if (gameModule_.swapStaged())
+        {
+            adoptGame();
+            showToast("Game reloaded");
+        }
+        else
+            showToast("Game reload failed (see console)");
+    }
+    catch (const std::exception& e)
+    {
+        showToast(std::string("Game reload failed: ") + e.what());
+    }
 
     EntitySerializer::clearSceneAndLoadBuffer(*world_, *ctx_, snapshot);
     uiPanels_.clearSelection();
+}
+
+void App::adoptGame()
+{
+    game_ = gameModule_.makeGame();
+    if (gameModule_.api_.gameExeName_)
+        gameExeName_ = gameModule_.api_.gameExeName_;
+}
+
+void App::showToast(std::string msg)
+{
+    toast_ = std::move(msg);
+    toastEnd_ = std::chrono::steady_clock::now() + std::chrono::seconds(4);
 }
 
 void App::startPlay()
@@ -104,14 +131,14 @@ static void spawnDetached(const std::string& exe, const std::string& args)
 
 void App::runStandalone()
 {
-    if (gameExe_.empty())
+    if (gameExeName_.empty())
         return;
 
     namespace fs = std::filesystem;
     const fs::path scene = fs::temp_directory_path() / "batap_run.btpl";
     EntitySerializer::save(*world_, *ctx_, scene.string());
 
-    fs::path exe = fs::path(platformExeDir()) / gameExe_;
+    fs::path exe = fs::path(platformExeDir()) / gameExeName_;
 #if defined(_WIN32)
     exe += ".exe";
 #endif
@@ -124,14 +151,14 @@ static std::filesystem::path configPath()
 {
 #if defined(_WIN32)
     char* appdata = nullptr;
-    size_t len    = 0;
+    size_t len = 0;
     _dupenv_s(&appdata, &len, "APPDATA");
     std::filesystem::path base = appdata ? appdata : ".";
     free(appdata);
 #else
     const char* home = std::getenv("HOME");
-    std::filesystem::path base =
-        home ? std::filesystem::path(home) / "Library/Application Support" : ".";
+    std::filesystem::path base = home ? std::filesystem::path(home) / "Library/Application Support"
+                                      : ".";
 #endif
     return base / "BatapEngine" / "recent.json";
 }
@@ -154,7 +181,8 @@ void App::loadRecentProjects()
                 recentProjects_.push_back(std::move(str));
         }
     }
-    catch (...) {}
+    catch (...)
+    {}
 }
 
 void App::saveRecentProjects()
@@ -174,14 +202,23 @@ void App::selectProject(const std::string& dir)
 
     if (!game_ && !gameModule_.loaded())
     {
-        const auto dll = std::filesystem::path(dir) / "bin" / "Game.dll";
-        if (std::filesystem::exists(dll) && gameModule_.load(dll.string()))
-            game_ = gameModule_.makeGame();
+        try
+        {
+            const auto dll = std::filesystem::path(dir) / "bin" / "Game.dll";
+            if (std::filesystem::exists(dll) && gameModule_.load(dll.string()))
+            {
+                adoptGame();
+                showToast("Game loaded");
+            }
+        }
+        catch (const std::exception& e)
+        {
+            showToast(std::string("Game load failed: ") + e.what());
+        }
     }
 
-    recentProjects_.erase(
-        std::remove(recentProjects_.begin(), recentProjects_.end(), dir),
-        recentProjects_.end());
+    recentProjects_.erase(std::remove(recentProjects_.begin(), recentProjects_.end(), dir),
+                          recentProjects_.end());
     recentProjects_.insert(recentProjects_.begin(), dir);
     if (recentProjects_.size() > 10)
         recentProjects_.resize(10);
