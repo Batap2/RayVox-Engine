@@ -1,6 +1,7 @@
 #pragma once
 
-// Boundary between a host (editor) and a game DLL (`--game X.dll`).
+// Boundary between a host (editor) and a game DLL — loaded from
+// <project>/bin/Game.dll when a project opens, or forced with `--game X.dll`.
 //
 // The DLL carries its own copy of the engine code it reaches, and with it a
 // second copy of the reflection globals (registry, fieldTypeSlot<M>,

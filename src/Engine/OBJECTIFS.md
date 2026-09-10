@@ -119,12 +119,16 @@ qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
 
 ## 5. Hot reload du code (les shaders sont faits, cf. §0)
 
-- [ ] **Jeu en bibliothèque dynamique** + boucle hôte : watch mtime, swap de la
-      table de fonctions, ré-enregistrement propre du `ComponentRegistry` au
-      reload (ses function pointers pointent dans la lib). Sur mac : `dlopen`
-      d'un `.dylib`, pas de verrou fichier — la copie avant chargement et le
-      versionnage `game_{n}` sont des contournements Windows, à garder derrière
-      un `#ifdef` le jour du portage.
+- [x] **Jeu en bibliothèque dynamique** + boucle hôte — fait :
+      `GameExemple_Game.dll` (`game_module.cpp`, un export C `batapGameEntry`),
+      chargée par l'éditeur nu via `--game`. La logique complète (duplication
+      des globals, fusion `importFrom`, recâblage des index, patch drawUI) est
+      documentée en tête de `src/Engine/GameModule.h`. Watch mtime (throttlé
+      0.5 s) + swap dans `GameModuleLoader`/`App::pumpGameModuleReload` ;
+      copie `X_loaded_{n}.dll` (verrou Windows), `#ifdef` mac déjà en place.
+      État préservé par snapshot JSON (le mécanisme Play/Stop) en attendant le
+      binaire ci-dessous ; le registry entt est reconstruit au swap (ses
+      storages tiennent des pointeurs de code DLL).
 - [ ] **Préservation d'état par snapshot binaire + hash de layout** — PAS de JSON,
       PAS de handoff de pointeur brut (pattern Odin : garde des pointeurs vers la
       vieille lib, interdit de la décharger, casse si une struct change) :
@@ -135,7 +139,10 @@ qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
         (le mécanisme de désérialisation existant), payée seulement par ce type.
       Coût dominé par le link (~50-100 ms), indépendant de la taille de la scène.
       Les assets/GPU vivent côté hôte : jamais rechargés.
-- [ ] entt à travers la frontière dynamique : type ids stables (`ENTT_STANDARD_CPP`).
+- [x] entt à travers la frontière dynamique — réglé sans `ENTT_STANDARD_CPP` :
+      les deux modules sont compilés par le même clang, les type ids par
+      défaut (hash du nom via pretty-function) sont identiques des deux côtés.
+      `ENTT_STANDARD_CPP` ferait l'inverse (ids séquentiels par module).
 - [ ] Règle côté jeu : pas d'état statique dans la lib (tout état vit dans le World).
 
 ## 6. Ergonomie moteur (repris de l'ancien `TODO.md`)

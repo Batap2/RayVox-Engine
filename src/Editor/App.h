@@ -38,6 +38,8 @@ struct App
     void runStandalone();
     std::string gameExe_;
 
+    void pumpGameModuleReload();
+
     Engine* ctx_ = nullptr;
     World*   world_ = nullptr;
     AssetManager* assetManager_ = nullptr;

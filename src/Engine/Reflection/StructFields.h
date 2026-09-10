@@ -1,18 +1,13 @@
 #pragma once
 
 // Minimal aggregate reflection — field count, field access, field names.
-// Hand-written equivalent of the tiny subset of Boost.PFR we need, so the
-// engine carries no extra dependency. Same __PRETTY_FUNCTION__ mechanism
-// magic_enum already relies on.
+// Equivalent of the tiny subset of Boost.PFR we need.
 //
 // Requirements on T:
 //   - aggregate: no user ctor, no private/protected fields, no base class
 //     (members with ctors like Eigen types are fine)
 //   - at most kMaxFields fields
 //   - no C-array fields (wrap them in std::array)
-//
-// Compiler support: clang / clang-cl. Adding MSVC later only means a second
-// parsing branch in prettyFieldName().
 
 #include <cstddef>
 #include <string_view>

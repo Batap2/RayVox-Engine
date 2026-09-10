@@ -43,7 +43,7 @@ static EntityHandle duplicateEntity(World& world, EntityHandle src)
 
     for (const ComponentType& t : ComponentRegistry::instance().all())
     {
-        if (!t.tryGet(reg, src.entity_))
+        if (!t.tryGet || !t.tryGet(reg, src.entity_))
             continue;
         t.copy(reg, src.entity_, dst.entity_);
         if (t.meta.onDeserialized)

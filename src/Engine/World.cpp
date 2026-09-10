@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "Components/Camera_C.h"
+#include "Components/Hierarchy_C.h"
 #include "Engine.h"
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
@@ -50,6 +51,26 @@ void World::update()
     scene_->update(ctx_->deltaTime_, *ctx_, *this);
     systems_->update(ctx_->deltaTime_, *ctx_, *this);
     instanceManager_->uploadRemainingFrameDirty(*ctx_);
+}
+
+void World::resetScene()
+{
+    auto& reg = scene_->registry_;
+
+    std::vector<entt::entity> roots;
+    for (auto e : reg.storage<entt::entity>())
+    {
+        if (!reg.valid(e))
+            continue;
+        auto* hc = reg.try_get<Hierarchy_C>(e);
+        if (!hc || hc->parent == entt::null)
+            roots.push_back(e);
+    }
+    for (auto e : roots)
+        entityFactory_->destroy({&reg, e});
+
+    reg = entt::registry{};
+    instanceManager_->connectHooks(reg);
 }
 
 bool World::loadScene(const std::string& path)

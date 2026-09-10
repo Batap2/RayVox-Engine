@@ -2,6 +2,8 @@
 
 #include "GameModule.h"
 
+#include <chrono>
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -15,9 +17,22 @@ struct GameModuleLoader
     std::unique_ptr<Game> makeGame() const;
     bool loaded() const { return lib_ != nullptr; }
 
+    bool stagePending();
+    bool swapStaged();
+
     GameModuleAPI api_{};
     void* lib_ = nullptr;
-    std::string sourcePath_;
+
+   private:
+    bool stage();
+    bool loadStaged();
+    void unload();
+
+    std::filesystem::path sourcePath_;
+    std::filesystem::path loadedPath_;
+    std::filesystem::path stagedPath_;
+    std::filesystem::file_time_type loadedMtime_{};
+    std::chrono::steady_clock::time_point lastCheck_{};
     uint32_t generation_ = 0;
 };
 }  // namespace batap

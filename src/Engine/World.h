@@ -23,6 +23,10 @@ struct World
     SceneRenderArgs renderArgs();
     bool loadScene(const std::string& path);
 
+    // Replaces the registry itself: its per-type storages hold code pointers
+    // into a loaded game DLL and must not outlive it (hot reload).
+    void resetScene();
+
     std::unique_ptr<Scene> scene_;
     std::unique_ptr<Systems> systems_;
     std::unique_ptr<GPUInstanceManager> instanceManager_;

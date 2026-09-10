@@ -78,6 +78,22 @@
             ]
         },
         {
+            "label": "Build game dll (relwithdebinfo)",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "call \"${workspaceFolder}\\build_msvc.bat\" msvc-relwithdebinfo --no-format --target GameExemple_Game"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ]
+        },
+        {
             "label": "Build (msvc-relwithdebinfo)",
             "type": "shell",
             "command": "cmd.exe",

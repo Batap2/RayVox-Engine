@@ -74,6 +74,8 @@ void InspectorPanel::drawReflected(EntityHandle ent, World& world)
     {
         if (t.meta.customEditor)  // drawn by its own panel above
             continue;
+        if (!t.tryGet)
+            continue;
 
         void* c = t.tryGet(*ent.reg_, ent.entity_);
         if (!c)
@@ -126,7 +128,7 @@ void InspectorPanel::drawAddComponent(EntityHandle ent, World& world)
             // Markers define the entity's aspect — chosen at spawn, not added.
             if (t.mask & markers)
                 continue;
-            if (t.tryGet(*ent.reg_, ent.entity_))
+            if (!t.tryGet || t.tryGet(*ent.reg_, ent.entity_))
                 continue;
 
             if (ImGui::MenuItem(prettyLabel(t.name).c_str()))

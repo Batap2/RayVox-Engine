@@ -31,10 +31,7 @@ void UIPanels::draw(World& world, App& app, Engine& ctx)
                     [&app](std::vector<std::string>&& paths)
                     {
                         if (!paths.empty())
-                        {
-                            app.projectDir_ = std::move(paths[0]);
-                            app.ctx_->assetManager_->setBaseDir(app.projectDir_);
-                        }
+                            app.selectProject(paths[0]);
                     });
 
             if (ImGui::MenuItem("Open Scene..."))

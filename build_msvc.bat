@@ -7,18 +7,27 @@ set "RED=%ESC%[31m"
 set "RESET=%ESC%[0m"
 
 if "%~1"=="" (
-  echo %RED%[ERROR]%RESET% Usage: build_msvc.bat ^<preset-name^> [--configure] [--no-format]
+  echo %RED%[ERROR]%RESET% Usage: build_msvc.bat ^<preset-name^> [--configure] [--no-format] [--target ^<name^>]
   exit /b 1
 )
 
 set "PRESET=%~1"
 set "DO_CONFIGURE=0"
 set "NO_FORMAT=0"
+set "TARGET_ARG="
 
-if /I "%~2"=="--configure" set "DO_CONFIGURE=1"
-if /I "%~2"=="--no-format"   set "NO_FORMAT=1"
-if /I "%~3"=="--configure" set "DO_CONFIGURE=1"
-if /I "%~3"=="--no-format"   set "NO_FORMAT=1"
+shift
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--configure" set "DO_CONFIGURE=1"
+if /I "%~1"=="--no-format" set "NO_FORMAT=1"
+if /I "%~1"=="--target" (
+  set "TARGET_ARG=--target %~2"
+  shift
+)
+shift
+goto parse_args
+:args_done
 
 echo [INFO] Preset: %PRESET%
 
@@ -56,7 +65,7 @@ echo [INFO] Building...
 
 set "LOGFILE=%TEMP%\BatapEngine_build_%RANDOM%.log"
 
-cmake --build --preset %PRESET% > "%LOGFILE%" 2>&1
+cmake --build --preset %PRESET% %TARGET_ARG% > "%LOGFILE%" 2>&1
 set "BUILD_RC=%ERRORLEVEL%"
 
 if "%NO_FORMAT%"=="1" (

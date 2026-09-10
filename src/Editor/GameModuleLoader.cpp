@@ -3,7 +3,6 @@
 #include "Reflection/ComponentRegistry.h"
 #include "UI/FieldUI.h"
 
-#include <filesystem>
 #include <iostream>
 
 #if defined(_WIN32)
@@ -14,36 +13,49 @@
 
 namespace batap
 {
+namespace fs = std::filesystem;
 
 bool GameModuleLoader::load(const std::string& dllPath)
 {
-    namespace fs = std::filesystem;
     sourcePath_ = dllPath;
+    return stage() && loadStaged();
+}
 
-#if defined(_WIN32)
-    // Windows locks loaded modules: load a copy so the linker can keep
-    // overwriting the real one.
-    fs::path loadedPath = fs::path(dllPath);
-    loadedPath.replace_filename(loadedPath.stem().string() + "_loaded_" +
-                                std::to_string(generation_++) + ".dll");
+// Windows locks loaded modules: a copy is loaded so the linker can keep
+// overwriting the real one. Staging is separate from loading so a locked
+// file (linker mid-write) just means "retry next frame".
+bool GameModuleLoader::stage()
+{
     std::error_code ec;
-    fs::copy_file(dllPath, loadedPath, fs::copy_options::overwrite_existing, ec);
+    const auto mtime = fs::last_write_time(sourcePath_, ec);
     if (ec)
-    {
-        std::cerr << "[GameModule] copy failed: " << dllPath << " -> " << loadedPath.string()
-                  << " (" << ec.message() << ")\n";
         return false;
-    }
 
-    lib_ = ::LoadLibraryA(loadedPath.string().c_str());
+    fs::path staged = sourcePath_;
+    staged.replace_filename(sourcePath_.stem().string() + "_loaded_" +
+                            std::to_string(generation_++) + ".dll");
+    fs::copy_file(sourcePath_, staged, fs::copy_options::overwrite_existing, ec);
+    if (ec)
+        return false;
+
+    stagedPath_ = staged;
+    loadedMtime_ = mtime;
+    return true;
+}
+
+bool GameModuleLoader::loadStaged()
+{
+#if defined(_WIN32)
+    lib_ = ::LoadLibraryA(stagedPath_.string().c_str());
 #else
-    lib_ = ::dlopen(dllPath.c_str(), RTLD_NOW);
+    lib_ = ::dlopen(sourcePath_.string().c_str(), RTLD_NOW);
 #endif
     if (!lib_)
     {
-        std::cerr << "[GameModule] failed to load " << dllPath << "\n";
+        std::cerr << "[GameModule] failed to load " << stagedPath_.string() << "\n";
         return false;
     }
+    loadedPath_ = stagedPath_;
 
 #if defined(_WIN32)
     // GetProcAddress returns a generic function pointer by design.
@@ -57,10 +69,12 @@ bool GameModuleLoader::load(const std::string& dllPath)
 #endif
     if (!entry)
     {
-        std::cerr << "[GameModule] " << GameModuleEntryName << " not found in " << dllPath << "\n";
+        std::cerr << "[GameModule] " << GameModuleEntryName << " not found in "
+                  << sourcePath_.string() << "\n";
         return false;
     }
 
+    api_ = {};
     entry(&api_);
     ComponentRegistry::instance().importFrom(*api_.registry_);
 
@@ -72,8 +86,50 @@ bool GameModuleLoader::load(const std::string& dllPath)
                 installFieldUIFor(*f.type);
 
     ComponentRegistry::instance().validate();
-    std::cout << "[GameModule] loaded " << dllPath << "\n";
+    std::cerr << "[GameModule] loaded " << loadedPath_.string() << "\n";
     return true;
+}
+
+bool GameModuleLoader::stagePending()
+{
+    if (!loaded())
+        return false;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastCheck_ < std::chrono::milliseconds(500))
+        return false;
+    lastCheck_ = now;
+
+    std::error_code ec;
+    const auto mtime = fs::last_write_time(sourcePath_, ec);
+    if (ec || mtime == loadedMtime_)
+        return false;
+
+    return stage();
+}
+
+bool GameModuleLoader::swapStaged()
+{
+    const fs::path old = loadedPath_;
+    unload();
+
+    std::error_code ec;
+    fs::remove(old, ec);
+
+    return loadStaged();
+}
+
+void GameModuleLoader::unload()
+{
+    if (!lib_)
+        return;
+#if defined(_WIN32)
+    ::FreeLibrary(static_cast<HMODULE>(lib_));
+#else
+    ::dlclose(lib_);
+#endif
+    lib_ = nullptr;
+    api_ = {};
 }
 
 std::unique_ptr<Game> GameModuleLoader::makeGame() const
@@ -83,13 +139,7 @@ std::unique_ptr<Game> GameModuleLoader::makeGame() const
 
 GameModuleLoader::~GameModuleLoader()
 {
-#if defined(_WIN32)
-    if (lib_)
-        ::FreeLibrary(static_cast<HMODULE>(lib_));
-#else
-    if (lib_)
-        ::dlclose(lib_);
-#endif
+    unload();
 }
 
 }  // namespace batap

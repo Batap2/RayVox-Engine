@@ -41,6 +41,7 @@ App::App(Engine& engine, World& world)
 void App::update(Frame& frame)
 {
     pumpMsgFileDialog();
+    pumpGameModuleReload();
 
     if (state_ == AppState::SelectProject)
     {
@@ -53,6 +54,22 @@ void App::update(Frame& frame)
             game_->update(*world_, frame);
         world_->update();
     }
+}
+
+void App::pumpGameModuleReload()
+{
+    if (!gameModule_.stagePending())
+        return;
+
+    const std::string snapshot = EntitySerializer::toBuffer(*world_, *ctx_);
+    game_.reset();
+    world_->resetScene();
+
+    if (gameModule_.swapStaged())
+        game_ = gameModule_.makeGame();
+
+    EntitySerializer::clearSceneAndLoadBuffer(*world_, *ctx_, snapshot);
+    uiPanels_.clearSelection();
 }
 
 void App::startPlay()
@@ -154,6 +171,13 @@ void App::selectProject(const std::string& dir)
     projectDir_ = dir;
     ctx_->assetManager_->setBaseDir(dir);
     state_ = AppState::Running;
+
+    if (!game_ && !gameModule_.loaded())
+    {
+        const auto dll = std::filesystem::path(dir) / "bin" / "Game.dll";
+        if (std::filesystem::exists(dll) && gameModule_.load(dll.string()))
+            game_ = gameModule_.makeGame();
+    }
 
     recentProjects_.erase(
         std::remove(recentProjects_.begin(), recentProjects_.end(), dir),

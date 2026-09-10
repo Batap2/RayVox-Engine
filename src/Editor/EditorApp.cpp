@@ -21,8 +21,6 @@ int runEditor(const EditorConfig& cfg)
         if (cfg.gameExe_)
             app.gameExe_ = cfg.gameExe_;
 
-        // `--game <dll>` (dev mode): the game is loaded as a module instead of
-        // being compiled in.
         const auto args = platformCommandLineArgs();
         for (size_t i = 0; i + 1 < args.size(); ++i)
             if (args[i] == "--game" && app.gameModule_.load(args[i + 1]))

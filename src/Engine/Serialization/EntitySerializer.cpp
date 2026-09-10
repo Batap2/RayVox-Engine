@@ -40,6 +40,8 @@ static nlohmann::json reflectedComponents(EntityHandle h, const Engine& ctx)
     nlohmann::json arr = nlohmann::json::array();
     for (const ComponentType& t : ComponentRegistry::instance().all())
     {
+        if (!t.tryGet)
+            continue;
         void* c = t.tryGet(*h.reg_, h.entity_);
         if (!c)
             continue;
@@ -189,7 +191,7 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
         for (const auto& cj : compsJ)
         {
             const ComponentType* ct = ComponentRegistry::instance().find(cj.value("type", ""));
-            if (!ct)
+            if (!ct || !ct->getOrEmplace)
             {
                 reg.get_or_emplace<UnknownComponents_C>(h.entity_).blobs_.push_back(cj.dump());
                 continue;

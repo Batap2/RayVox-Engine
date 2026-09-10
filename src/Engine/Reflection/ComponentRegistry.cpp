@@ -7,6 +7,7 @@
 
 #include <bit>
 #include <string>
+#include <unordered_set>
 
 namespace batap
 {
@@ -51,19 +52,51 @@ uint32_t ComponentRegistry::add(ComponentType type)
 
 void ComponentRegistry::importFrom(ComponentRegistry& module)
 {
+    std::unordered_set<std::string_view> provided;
+
     for (ComponentType& mt : module.types_)
     {
-        uint32_t index;
-        if (const ComponentType* existing = find(mt.name))
-            index = static_cast<uint32_t>(std::countr_zero(existing->mask));
-        else
+        provided.insert(mt.name);
+
+        uint32_t index = InvalidComponentIndex;
+        for (ComponentType& t : types_)
+        {
+            if (t.name != mt.name)
+                continue;
+            index = static_cast<uint32_t>(std::countr_zero(t.mask));
+            if (t.fromModule_)
+            {
+                // Refresh: the old entry's pointers target the unloaded DLL.
+                const ComponentMask mask = t.mask;
+                t = mt;
+                t.mask = mask;
+                t.fromModule_ = true;
+            }
+            break;
+        }
+        if (index == InvalidComponentIndex)
         {
             ComponentType copy = mt;
+            copy.fromModule_ = true;
             index = add(std::move(copy));
         }
+
         if (mt.indexSlot_)
             *mt.indexSlot_ = index;
     }
+
+    // A module type not provided anymore: entries keep their index (masks are
+    // positional) but must never be called again.
+    for (ComponentType& t : types_)
+        if (t.fromModule_ && !provided.contains(t.name))
+        {
+            t.tryGet = nullptr;
+            t.getOrEmplace = nullptr;
+            t.remove = nullptr;
+            t.copy = nullptr;
+            t.indexSlot_ = nullptr;
+            t.fields.clear();
+        }
 }
 
 const ComponentType* ComponentRegistry::find(std::string_view name) const

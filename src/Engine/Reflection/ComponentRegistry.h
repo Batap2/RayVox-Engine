@@ -160,6 +160,11 @@ struct ComponentType
     // writes the host's index through it so componentMask<T> agrees across
     // the DLL boundary.
     uint32_t* indexSlot_ = nullptr;
+
+    // Came from a game module: its code pointers must be refreshed on every
+    // reload, and nulled if the module stops providing the type. Generic
+    // loops must skip an entry whose tryGet is null.
+    bool fromModule_ = false;
 };
 
 struct ComponentRegistry
