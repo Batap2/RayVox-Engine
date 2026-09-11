@@ -21,19 +21,16 @@ World::World(Engine& ctx) : ctx_(&ctx)
     instanceManager_ = std::make_unique<GPUInstanceManager>(ctx);
     entityFactory_ = std::make_unique<EntityFactory>();
 
-    // Empty scene, never a null one. The editor replaces it with its own subclass.
-    scene_ = std::make_unique<Scene>(*instanceManager_);
+    registry_.ctx().emplace<World*>(this);
+    instanceManager_->connectHooks(registry_);
 
     // refresh camera ratio on window resize
     ctx.renderer_->onResize(
         [this](uint32_t, uint32_t)
         {
-            if (!scene_)
-                return;
-            auto& reg = scene_->registry_;
-            reg.view<Camera_C>().each(
+            registry_.view<Camera_C>().each(
                 [&](entt::entity e, Camera_C& c)
-                { instanceManager_->markDirty<Camera_C>({&reg, e}); });
+                { instanceManager_->markDirty<Camera_C>({&registry_, e}); });
         });
 
     bindScene(ctx, *this);
@@ -43,19 +40,18 @@ World::~World() = default;
 
 SceneRenderArgs World::renderArgs()
 {
-    return {&scene_->registry_, instanceManager_.get()};
+    return {&registry_, instanceManager_.get()};
 }
 
 void World::update()
 {
-    scene_->update(ctx_->deltaTime_, *ctx_, *this);
     systems_->update(ctx_->deltaTime_, *ctx_, *this);
     instanceManager_->uploadRemainingFrameDirty(*ctx_);
 }
 
 void World::resetScene()
 {
-    auto& reg = scene_->registry_;
+    auto& reg = registry_;
 
     std::vector<entt::entity> roots;
     for (auto e : reg.storage<entt::entity>())
@@ -70,6 +66,7 @@ void World::resetScene()
         entityFactory_->destroy({&reg, e});
 
     reg = entt::registry{};
+    reg.ctx().emplace<World*>(this);
     instanceManager_->connectHooks(reg);
 }
 

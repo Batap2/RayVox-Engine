@@ -13,13 +13,6 @@ namespace batap
 struct World;
 struct GPUInstanceManager;
 
-enum class Space
-{
-    Local,
-    Parent,
-    World
-};
-
 struct Transform_S
 {
     uint32_t frameCount = 1;

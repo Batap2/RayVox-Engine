@@ -30,8 +30,11 @@ env var `BATAP_DUMP_FRAME=N` to dump frame N as an image.
 - `struct` everywhere, never `class`.
 - Members end with an underscore: `moveSpeed_`, `registry_`.
 - Everything lives in `namespace batap`; every header starts with `#pragma once`.
-- Comments in English only, and only when non-obvious. No comments that narrate
-  the next line or justify a change.
+- No comments by default. Three exceptions, in English, kept short: code
+  genuinely hard to follow; a trap; something whose reason lives far from the
+  code (an invariant held elsewhere, a constraint from another system). Never:
+  API docs on declarations, file headers, purpose notes, restating the code.
+  Re-scan every diff and strip the rest before finishing.
 - Warnings are errors; `-Wunsafe-buffer-usage` stays on globally. Suppress it
   locally at API boundaries (push/ignore/pop), never globally.
 - Naming: components `Foo_C` (plain data), systems `Foo_S` (logic), one file

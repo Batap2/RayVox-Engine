@@ -3,9 +3,19 @@
 #include <entt/entt.hpp>
 #include <functional>
 #include "DebugUtils.h"
+#include "EigenTypes.h"
+#include "Reflection/ComponentMask.h"
 
 namespace batap
 {
+
+enum class Space
+{
+    Local,
+    Parent,
+    World
+};
+
 struct EntityHandle
 {
     entt::registry* reg_ = nullptr;
@@ -25,7 +35,7 @@ struct EntityHandle
     }
 
     template <typename T>
-    T& emplace() 
+    T& emplace()
     {
         ThrowAssert(valid(), "entityHandle not valid");
         return reg_->emplace<T>(entity_);
@@ -48,6 +58,28 @@ struct EntityHandle
         ThrowAssert(valid(), "entityHandle not valid");
         return reg_->get<T>(entity_);
     }
+
+    // A direct get<T>() write never reaches the GPU
+    template <typename T>
+    T& write()
+    {
+        markDirty(componentMask<T>());
+        return get<T>();
+    }
+
+    void markDirty(ComponentMask changed);
+
+    void setLocalPosition(const v3f& p);
+    void setLocalRotation(const quatf& q);
+    void setLocalScale(const v3f& s);
+
+    void translate(const v3f& vec, Space space = Space::Local);
+    void rotate(const quatf& delta, Space space = Space::Local);
+    void rotate(const v3f& axis, float radians, Space space = Space::Local);
+    void scale(const v3f& vec);
+
+    void setParent(EntityHandle newParent);
+    EntityHandle parent() const;
 };
 }  // namespace batap
 

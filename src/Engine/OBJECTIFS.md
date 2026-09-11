@@ -63,7 +63,7 @@ interop dans `ShaderInterop.h`, `Uses`, `fill()`, une ligne dans
 - [x] **Pools peuplés par hooks entt** — `on_construct`/`on_destroy` sur le
       composant marqueur (tête de `Uses`) : la présence du composant *est*
       l'appartenance au pool. Les modifications passent par
-      `Scene::write<T>`/`markDirty` (pas d'`on_update` — une écriture directe
+      `EntityHandle::write<T>`/`markDirty` (pas d'`on_update` — une écriture directe
       via `reg.get<T>()` n'atteint pas le GPU, contrat assumé).
 - [x] **Kind dérivé des composants** — `markDirty` route par
       `(changed & pool.usedComponents_) && pool.contains(handle)`. `EntityKind`,
@@ -149,10 +149,18 @@ qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
 
 Indépendant des chantiers ci-dessus, à prendre à la pièce.
 
-- [ ] **Façade jeu + header parapluie `batap.h`** — aujourd'hui `World` n'expose
-      que `update`/`loadScene`/`renderArgs` et ses `unique_ptr` publics : écrire
-      du gameplay c'est `world.systems_->transforms_->setLocalPosition(...)` et
-      neuf includes. Viser `spawn`/`setPosition`/`input`/`load`.
+- [x] **Façade jeu + header parapluie `batap.h`** — fait (modèle fat handle) :
+      les opérations vivent sur les objets, pas dans une couche à part.
+      `EntityHandle` porte `setLocalPosition`/`setLocalRotation`/`translate`/
+      `rotate`/`scale`/`setParent` (le registry porte un `World*` dans son
+      `ctx()`, plus `write<T>` — marque eager à l'acquisition, modèle
+      flecs/Unity — et `markDirty` pour les autres composants GPU ; le
+      `WriteProxy` opt-in a été supprimé) ; `Scene` a été fusionnée dans
+      `World` (`world.registry_` — la hiérarchie Scene/DefaultScene ne
+      portait plus rien depuis les scènes data-driven) ; `World` porte
+      `spawn(id)`/`destroy` et ses `unique_ptr` sont privés
+      (`systems()`/`instances()`/`factory()` pour les internes moteur/éditeur).
+      `batap.h` = Engine + Game + InputManager + World.
 - [ ] **`loadAsset<T>()` typé** au lieu de `optional<AssetHandleAny>` + `std::get`
       (`Assets/AssetLoader.h:20`).
 - [ ] **Enregistrement de systèmes utilisateur** — `Systems::update` est en dur

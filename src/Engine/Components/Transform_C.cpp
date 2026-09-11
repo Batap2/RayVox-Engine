@@ -13,7 +13,7 @@ namespace batap {
         if (!tc)
             return;
         tc->localDirty_ = true;
-        world.systems_->transforms_->markDirty(h);
+        world.systems().transforms_->markDirty(h);
     }
 
     void Transform_C::registerReflection()

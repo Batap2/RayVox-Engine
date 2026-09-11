@@ -56,7 +56,7 @@ using GPUInstances = TypeList<..., HealthInstance>;
 ```
 
 Pool, upload, entt hooks, dirty routing and binding checks all follow.
-Writes must go through `Scene::write<T>` (or `markDirty`) to reach the GPU.
+Writes must go through `EntityHandle::write<T>` (or `markDirty`) to reach the GPU.
 
 In the shader:
 

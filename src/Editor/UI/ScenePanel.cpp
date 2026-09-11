@@ -2,10 +2,9 @@
 
 #include "Components/Hierarchy_C.h"
 #include "Components/Name_C.h"
-#include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
+#include "Instance/Spawnable.h"
 #include "Reflection/ComponentRegistry.h"
-#include "Scene.h"
 #include "Systems/Hierarchy_S.h"
 #include "UI/IconsMaterialDesign.h"
 #include "World.h"
@@ -38,7 +37,7 @@ static void sortByName(entt::registry& reg, std::vector<entt::entity>& entities)
 static EntityHandle duplicateEntity(World& world, EntityHandle src)
 {
     auto& reg = *src.reg_;
-    EntityHandle dst = world.entityFactory_->create(reg, Spawnables[0]);
+    EntityHandle dst = world.spawn(Spawnables[0]);
     reg.get<Name_C>(dst.entity_).name_ = reg.get<Name_C>(src.entity_).name_;
 
     for (const ComponentType& t : ComponentRegistry::instance().all())
@@ -48,7 +47,7 @@ static EntityHandle duplicateEntity(World& world, EntityHandle src)
         t.copy(reg, src.entity_, dst.entity_);
         if (t.meta.onDeserialized)
             t.meta.onDeserialized(dst, world);
-        world.instanceManager_->markDirty(dst, t.mask());
+        world.instances().markDirty(dst, t.mask());
     }
 
     std::vector<entt::entity> childList;
@@ -66,7 +65,7 @@ static EntityHandle duplicateEntity(World& world, EntityHandle src)
 void ScenePanel::drawEntityNode(World& world, entt::entity e,
                                 std::optional<EntityHandle>& selectedEntity)
 {
-    auto& reg = world.scene_->registry_;
+    auto& reg = world.registry_;
     EntityHandle h = {&reg, e};
 
     if (renaming_ && *renaming_ == h)
@@ -169,7 +168,7 @@ void ScenePanel::drawEntityNode(World& world, entt::entity e,
 
 void ScenePanel::draw(World& world, std::optional<EntityHandle>& selectedEntity)
 {
-    auto& reg = world.scene_->registry_;
+    auto& reg = world.registry_;
 
     if (ImGui::Button(ICON_MD_ADD))
         ImGui::OpenPopup("AddEntityPopup");
@@ -180,7 +179,7 @@ void ScenePanel::draw(World& world, std::optional<EntityHandle>& selectedEntity)
         {
             const std::string label = std::string(s.icon) + " " + s.label;
             if (ImGui::MenuItem(label.c_str()))
-                world.entityFactory_->create(world.scene_->registry_, s);
+                world.spawn(s);
         }
 
         ImGui::EndPopup();
@@ -231,7 +230,7 @@ void ScenePanel::draw(World& world, std::optional<EntityHandle>& selectedEntity)
     }
     if (pendingDelete_)
     {
-        world.entityFactory_->destroy(*pendingDelete_);
+        world.destroy(*pendingDelete_);
         pendingDelete_.reset();
         if (selectedEntity && !reg.valid(selectedEntity->entity_))
             selectedEntity.reset();

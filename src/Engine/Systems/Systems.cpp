@@ -2,7 +2,6 @@
 
 #include "Engine.h"
 #include "FreeCamController_S.h"
-#include "Scene.h"
 #include "Transform_S.h"
 #include "World.h"
 
@@ -16,7 +15,7 @@ Systems::~Systems() = default;
 void Systems::update(float deltaTime, Engine& ctx, World& world)
 {
     freecam_->update(ctx, world, deltaTime);
-    transforms_->update(world.scene_->registry_, *world.instanceManager_);
+    transforms_->update(world.registry_, world.instances());
 }
 
 Systems::Systems()

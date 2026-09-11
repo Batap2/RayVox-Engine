@@ -44,7 +44,7 @@ static bool removeComponentMenu(const char* id)
 static void removeComponent(World& world, EntityHandle ent, const ComponentType& t)
 {
     t.remove(*ent.reg_, ent.entity_);
-    world.instanceManager_->markDirty(ent, t.mask());
+    world.instances().markDirty(ent, t.mask());
 }
 
 // "castShadows" / "pointLight" -> "Cast Shadows" / "Point Light"
@@ -100,7 +100,7 @@ void InspectorPanel::drawReflected(EntityHandle ent, World& world)
         if (removed)
             removeComponent(world, ent, t);
         else if (changed)
-            world.instanceManager_->markDirty(ent, t.mask());
+            world.instances().markDirty(ent, t.mask());
     }
 }
 
@@ -138,7 +138,7 @@ void InspectorPanel::drawAddComponent(EntityHandle ent, World& world)
                 // derived state after their fields exist.
                 if (t.meta.onDeserialized)
                     t.meta.onDeserialized(ent, world);
-                world.instanceManager_->markDirty(ent, t.mask());
+                world.instances().markDirty(ent, t.mask());
             }
         }
         ImGui::EndPopup();
@@ -163,7 +163,7 @@ void InspectorPanel::drawTransform(EntityHandle ent, World& world)
                       {
                           ImGui::SetNextItemWidth(-1.0f);
                           if (ImGui::DragFloat3("##pos", pos.data(), 0.05f))
-                              world.systems_->transforms_->setLocalPosition(ent, pos);
+                              ent.setLocalPosition(pos);
                           ui::WrapDragMouse();
                       });
 
@@ -198,7 +198,7 @@ void InspectorPanel::drawTransform(EntityHandle ent, World& world)
                                              angleaxisf(eulerRad.z(), v3f::UnitZ());
                               newRot.normalize();
                               rotationEditSourceQuat_ = newRot;
-                              world.systems_->transforms_->setLocalRotation(ent, newRot);
+                              ent.setLocalRotation(newRot);
                           }
                           ui::WrapDragMouse();
                       });
@@ -439,7 +439,7 @@ void InspectorPanel::drawSkybox(EntityHandle ent, App& app)
         }
 
     if (changed)
-        app.world_->instanceManager_->markDirty<Skybox_C>(ent);
+        app.world_->instances().markDirty<Skybox_C>(ent);
 }
 
 }  // namespace batap

@@ -5,7 +5,8 @@
 #include "Importers/FileImporter.h"
 #include "Platform/PlatformWindow.h"
 #include "Serialization/EntitySerializer.h"
-#include "TestScene.h"
+#include "Components/Camera_C.h"
+#include "Components/FreeCamController_C.h"
 #include "UI/FieldUI.h"
 #include "UI/UIPanels.h"
 #include "UI/UITheme.h"
@@ -35,7 +36,13 @@ App::App(Engine& engine, World& world)
     ui::ApplyTheme();
     installFieldUI();
 
-    world.scene_ = std::make_unique<TestScene>(world);
+    EntityHandle camera = world.spawn("camera");
+    auto& controller = camera.emplace<FreeCamController_C>();
+    controller.controlled_ = true;
+    controller.requireRightMouseButton_ = true;
+
+    camera.translate(v3f(0, 2, 6), Space::Local);
+    camera.get<Camera_C>().active_ = true;
 
     loadRecentProjects();
 }

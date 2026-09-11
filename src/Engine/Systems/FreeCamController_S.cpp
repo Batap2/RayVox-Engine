@@ -3,15 +3,13 @@
 #include "Components/FreeCamController_C.h"
 #include "Engine.h"
 #include "InputManager.h"
-#include "Systems/Systems.h"
-#include "Systems/Transform_S.h"
 #include "World.h"
 
 namespace batap
 {
 void FreeCamController_S::update(Engine& ctx, World& world, float deltaTime)
 {
-    world.scene_->registry_.view<Transform_C, FreeCamController_C>().each(
+    world.registry_.view<Transform_C, FreeCamController_C>().each(
         [&](entt::entity ent, Transform_C& transform, FreeCamController_C& controller)
         {
             if (!controller.controlled_)
@@ -20,7 +18,7 @@ void FreeCamController_S::update(Engine& ctx, World& world, float deltaTime)
             const bool looking = !controller.requireRightMouseButton_ ||
                                  ctx.inputManager_->down(MouseButton::Right);
 
-            entt::registry* reg = &world.scene_->registry_;
+            entt::registry* reg = &world.registry_;
 
             if (looking)
             {
@@ -39,8 +37,7 @@ void FreeCamController_S::update(Engine& ctx, World& world, float deltaTime)
                     quatf qYaw{angleaxisf(controller.yaw_, v3f::UnitY())};
                     quatf qPitch{angleaxisf(controller.pitch_, v3f::UnitX())};
 
-                    world.systems_->transforms_->setLocalRotation({reg, ent},
-                                                                  (qYaw * qPitch).normalized());
+                    EntityHandle{reg, ent}.setLocalRotation((qYaw * qPitch).normalized());
                 }
             }
 
@@ -74,8 +71,7 @@ void FreeCamController_S::update(Engine& ctx, World& world, float deltaTime)
                 float speed = ctx.inputManager_->down(Key::LShift) ? controller.boostSpeed_
                                                                         : controller.moveSpeed_;
 
-                world.systems_->transforms_->translate({reg, ent}, move * speed * deltaTime,
-                                                       Space::Local);
+                EntityHandle{reg, ent}.translate(move * speed * deltaTime, Space::Local);
             }
         });
 }

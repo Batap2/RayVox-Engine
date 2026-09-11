@@ -8,7 +8,6 @@
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
 #include "Reflection/ComponentRegistry.h"
-#include "Scene.h"
 #include "Systems/Hierarchy_S.h"
 #include "World.h"
 
@@ -75,7 +74,7 @@ static void writeFile(nlohmann::json& root, const std::unordered_set<std::string
 
 static nlohmann::json sceneToJson(World& world, const Engine& ctx)
 {
-    auto& reg = world.scene_->registry_;
+    auto& reg = world.registry_;
 
     std::vector<entt::entity> order;
     std::unordered_map<uint32_t, int> indexMap;
@@ -169,8 +168,8 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
     if (!root.contains("entities"))
         return;
 
-    auto& reg = world.scene_->registry_;
-    auto& factory = *world.entityFactory_;
+    auto& reg = world.registry_;
+    auto& factory = world.factory();
 
     const auto& entitiesJ = root["entities"];
     std::vector<entt::entity> created;
@@ -204,7 +203,7 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
 
             if (ct->meta.onDeserialized)
                 ct->meta.onDeserialized(h, world);
-            world.instanceManager_->markDirty(h, ct->mask());
+            world.instances().markDirty(h, ct->mask());
         }
 
         created.push_back(h.entity_);
@@ -226,8 +225,8 @@ static void populateWorld(World& world, const Engine& ctx, const nlohmann::json&
 
 static void clearScene(World& world)
 {
-    auto& reg = world.scene_->registry_;
-    auto& factory = *world.entityFactory_;
+    auto& reg = world.registry_;
+    auto& factory = world.factory();
 
     std::vector<entt::entity> roots;
     for (auto e : reg.storage<entt::entity>())

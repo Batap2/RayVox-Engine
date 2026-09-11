@@ -95,7 +95,7 @@ void GPUInstanceManager::uploadRemainingFrameDirty(Engine& ctx)
 void GPUInstanceManager::markDirty(const EntityHandle& handle, ComponentMask changed)
 {
     // Bailing out here rather than at each call site lets generic code — the
-    // field loops, Scene::write<T> — mark anything unconditionally: a CPU-only
+    // field loops, EntityHandle::write<T> — mark anything unconditionally: a CPU-only
     // component has an empty mask and reaches no pool.
     if (changed == 0)
         return;
