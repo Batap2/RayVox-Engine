@@ -2,6 +2,7 @@
 
 #include <entt/entt.hpp>
 #include <functional>
+#include <utility>
 #include "DebugUtils.h"
 #include "EigenTypes.h"
 #include "Reflection/ComponentMask.h"
@@ -34,11 +35,11 @@ struct EntityHandle
         return entity_ == other.entity_ && reg_ == other.reg_;
     }
 
-    template <typename T>
-    T& emplace()
+    template <typename T, typename... Args>
+    T& emplace(Args&&... args)
     {
         ThrowAssert(valid(), "entityHandle not valid");
-        return reg_->emplace<T>(entity_);
+        return reg_->emplace<T>(entity_, std::forward<Args>(args)...);
     }
 
     bool valid() const { return entity_ != entt::null && reg_ != nullptr && reg_->valid(entity_); }
@@ -53,7 +54,23 @@ struct EntityHandle
     }
 
     template <typename T>
+    const T* try_get() const noexcept
+    {
+        if (!valid())
+            return nullptr;
+
+        return reg_->try_get<T>(entity_);
+    }
+
+    template <typename T>
     T& get() noexcept
+    {
+        ThrowAssert(valid(), "entityHandle not valid");
+        return reg_->get<T>(entity_);
+    }
+
+    template <typename T>
+    const T& get() const noexcept
     {
         ThrowAssert(valid(), "entityHandle not valid");
         return reg_->get<T>(entity_);

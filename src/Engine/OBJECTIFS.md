@@ -161,16 +161,19 @@ Indépendant des chantiers ci-dessus, à prendre à la pièce.
       `spawn(id)`/`destroy` et ses `unique_ptr` sont privés
       (`systems()`/`instances()`/`factory()` pour les internes moteur/éditeur).
       `batap.h` = Engine + Game + InputManager + World.
-- [ ] **`loadAsset<T>()` typé** au lieu de `optional<AssetHandleAny>` + `std::get`
-      (`Assets/AssetLoader.h:20`).
+- [x] **`loadAsset<T>()` typé** — fait : `loadAsset<Mesh>(path, ctx)` retourne
+      un `MeshHandle` (null si échec ou mauvais type). La version non typée
+      reste pour les chemins génériques (asset picker, désérialisation).
 - [ ] **Enregistrement de systèmes utilisateur** — `Systems::update` est en dur
       (deux `unique_ptr` membres), un jeu ne peut pas ajouter son système.
 - [ ] **Requêtes** : pas de raycast, pas de `findByName`, pas de query spatiale
       (`Bbox.hpp` existe, inutilisé).
 - [ ] **Timestep fixe, pause, timescale** — il n'y a que `Engine::deltaTime_`.
-- [ ] **`v3f`/`m4f`/`quatf`/`transform` dans le namespace global** (`EigenTypes.h`).
-- [ ] **`EntityHandle::emplace<T>()` ne transmet pas d'arguments**, et pas de
-      surcharges `const` sur `get`/`try_get`.
+- [x] **`v3f`/`m4f`/`quatf`/`transform` dans le namespace global** — déjà le
+      cas, `EigenTypes.h` n'a pas de namespace.
+- [x] **`EntityHandle::emplace<T>()` ne transmet pas d'arguments**, et pas de
+      surcharges `const` sur `get`/`try_get` — fait : forwarding variadique +
+      surcharges `const`.
 - [ ] **Budget de staging par frame** — un débordement lève désormais au lieu de
       corrompre, mais une frame lourde (import d'un gros mesh) tue le process.
       Allocateur de staging par blocs recyclés derrière une fence.

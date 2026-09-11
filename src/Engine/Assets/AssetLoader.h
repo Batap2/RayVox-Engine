@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string_view>
+#include <variant>
 
 namespace batap
 {
@@ -18,6 +19,18 @@ struct Engine;
 //   .png / .jpg / .jpeg → Texture (raw image)
 // Returns nullopt if the format is unsupported or loading fails.
 std::optional<AssetHandleAny> loadAsset(std::string_view path, const Engine& ctx);
+
+// Null handle if loading fails or the file is not a T.
+template <class T>
+AssetHandle<T> loadAsset(std::string_view path, const Engine& ctx)
+{
+    auto any = loadAsset(path, ctx);
+    if (!any)
+        return {};
+    if (auto* handle = std::get_if<AssetHandle<T>>(&*any))
+        return *handle;
+    return {};
+}
 
 // Creates engine built-in assets: 1×1 white texture + default material (GPU slot 0).
 // Must be called once, before any scene assets are loaded.
