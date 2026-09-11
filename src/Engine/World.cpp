@@ -6,12 +6,14 @@
 #include "Components/Camera_C.h"
 #include "Components/Hierarchy_C.h"
 #include "Engine.h"
+#include "Game.h"
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/SceneBinding.h"
 #include "Serialization/EntitySerializer.h"
 #include "Systems/Systems.h"
+#include "Systems/Transform_S.h"
 
 namespace batap
 {
@@ -46,6 +48,15 @@ SceneRenderArgs World::renderArgs()
 void World::update()
 {
     systems_->update(ctx_->deltaTime_, *ctx_, *this);
+    instanceManager_->uploadRemainingFrameDirty(*ctx_);
+}
+
+void World::update(Game& game, Frame& frame)
+{
+    game.update(*this, frame);
+    systems_->update(ctx_->deltaTime_, *ctx_, *this);
+    game.lateUpdate(*this, frame);
+    systems_->transforms_->update(registry_, *instanceManager_);
     instanceManager_->uploadRemainingFrameDirty(*ctx_);
 }
 

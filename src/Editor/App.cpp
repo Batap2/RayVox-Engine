@@ -60,8 +60,9 @@ void App::update(Frame& frame)
     {
         uiPanels_.draw(*world_, *this, *ctx_);
         if (playing_ && game_)
-            game_->update(*world_, frame);
-        world_->update();
+            world_->update(*game_, frame);
+        else
+            world_->update();
     }
 }
 

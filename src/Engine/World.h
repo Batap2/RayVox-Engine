@@ -17,6 +17,8 @@ struct Systems;
 struct EntityFactory;
 struct AssetManager;
 struct Spawnable;
+struct Game;
+struct Frame;
 
 struct World
 {
@@ -24,6 +26,7 @@ struct World
     ~World();
 
     void update();
+    void update(Game& game, Frame& frame);
     SceneRenderArgs renderArgs();
     bool loadScene(const std::string& path);
 

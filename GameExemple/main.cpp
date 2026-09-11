@@ -27,10 +27,7 @@ int main()
     game.init(world);
 
     while (batap::Frame frame = engine.nextFrame())
-    {
-        game.update(world, frame);
-        world.update();
-    }
+        world.update(game, frame);
 
     return 0;
 }

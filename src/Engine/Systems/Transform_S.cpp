@@ -60,11 +60,11 @@ void Transform_S::markDirty(EntityHandle h)
     auto& reg = *h.reg_;
     auto& t = reg.get<Transform_C>(h.entity_);
 
-    if (t.dirtyStamp_ == frameCount)
+    if (t.dirtyStamp_ == flushEpoch_)
         return;
 
-    t.dirtyStamp_ = frameCount;
-    dirty.push_back(h.entity_);
+    t.dirtyStamp_ = flushEpoch_;
+    dirty_.push_back(h.entity_);
 }
 
 void Transform_S::setLocalPosition(EntityHandle h, const v3f& p)
@@ -191,12 +191,12 @@ void Transform_S::scale(EntityHandle h, const v3f& vec)
 
 void Transform_S::flushDirty(entt::registry& reg, GPUInstanceManager& instanceManager)
 {
-    if (dirty.empty())
+    if (dirty_.empty())
         return;
 
     emhash8::HashSet<entt::entity> dirtySet;
-    dirtySet.reserve(static_cast<unsigned int>(dirty.size()) * 2);
-    for (auto e : dirty)
+    dirtySet.reserve(static_cast<unsigned int>(dirty_.size()) * 2);
+    for (auto e : dirty_)
     {
         if (e == entt::null)
             continue;
@@ -204,7 +204,7 @@ void Transform_S::flushDirty(entt::registry& reg, GPUInstanceManager& instanceMa
             continue;
         dirtySet.insert(e);
     }
-    dirty.clear();
+    dirty_.clear();
     if (dirtySet.empty())
         return;
 
@@ -296,7 +296,7 @@ void Transform_S::flushDirty(entt::registry& reg, GPUInstanceManager& instanceMa
 
 void Transform_S::update(entt::registry& reg, GPUInstanceManager& instanceManager)
 {
-    ++frameCount;
+    ++flushEpoch_;
     flushDirty(reg, instanceManager);
 }
 

@@ -164,8 +164,14 @@ Indépendant des chantiers ci-dessus, à prendre à la pièce.
 - [x] **`loadAsset<T>()` typé** — fait : `loadAsset<Mesh>(path, ctx)` retourne
       un `MeshHandle` (null si échec ou mauvais type). La version non typée
       reste pour les chemins génériques (asset picker, désérialisation).
-- [ ] **Enregistrement de systèmes utilisateur** — `Systems::update` est en dur
-      (deux `unique_ptr` membres), un jeu ne peut pas ajouter son système.
+- [x] **Systèmes utilisateur** — décision : pas d'enregistrement. Le pattern
+      officiel est une boucle sur un view appelée depuis `Game::update` (le
+      jeu ordonne ses systèmes lui-même). Ajouté `Game::lateUpdate`, appelé
+      après le flush des transforms (matrices world de la frame courante :
+      caméra follow, look-at) avec un second flush avant l'upload —
+      `World::update(Game&, Frame&)` porte l'ordre de la frame. Reste ouvert
+      si un vrai besoin apparaît : système « outil » tournant dans l'éditeur
+      hors Play.
 - [ ] **Requêtes** : pas de raycast, pas de `findByName`, pas de query spatiale
       (`Bbox.hpp` existe, inutilisé).
 - [ ] **Timestep fixe, pause, timescale** — il n'y a que `Engine::deltaTime_`.

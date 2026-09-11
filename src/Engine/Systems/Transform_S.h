@@ -15,8 +15,8 @@ struct GPUInstanceManager;
 
 struct Transform_S
 {
-    uint32_t frameCount = 1;
-    std::vector<entt::entity> dirty;
+    uint32_t flushEpoch_ = 1;
+    std::vector<entt::entity> dirty_;
 
     void update(entt::registry& reg, GPUInstanceManager& instanceManager);
 
