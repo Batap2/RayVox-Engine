@@ -18,7 +18,15 @@ struct EntityFactory;
 struct AssetManager;
 struct Spawnable;
 struct Game;
-struct Frame;
+struct InputManager;
+
+struct Time
+{
+    float scale_ = 1.f;
+    bool paused_ = false;
+    float fixedDt_ = 1.f / 60.f;
+    float accumulator_ = 0.f;
+};
 
 struct World
 {
@@ -26,7 +34,9 @@ struct World
     ~World();
 
     void update();
-    void update(Game& game, Frame& frame);
+    void update(Game& game);
+
+    InputManager& input();
     SceneRenderArgs renderArgs();
     bool loadScene(const std::string& path);
 
@@ -43,6 +53,7 @@ struct World
     EntityFactory& factory() { return *entityFactory_; }
 
     entt::registry registry_;
+    Time time_;
 
    private:
     std::unique_ptr<Systems> systems_;

@@ -1,4 +1,5 @@
 #include "World.h"
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -7,6 +8,7 @@
 #include "Components/Hierarchy_C.h"
 #include "Engine.h"
 #include "Game.h"
+#include "InputManager.h"
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
 #include "Renderer/Renderer.h"
@@ -51,13 +53,26 @@ void World::update()
     instanceManager_->uploadRemainingFrameDirty(*ctx_);
 }
 
-void World::update(Game& game, Frame& frame)
+void World::update(Game& game)
 {
-    game.update(*this, frame);
+    const float dt = time_.paused_ ? 0.f : ctx_->deltaTime_ * time_.scale_;
+    time_.accumulator_ += std::min(dt, 0.25f);
+    while (time_.accumulator_ >= time_.fixedDt_)
+    {
+        game.fixedUpdate(*this, time_.fixedDt_);
+        time_.accumulator_ -= time_.fixedDt_;
+    }
+
+    game.update(*this, dt);
     systems_->update(ctx_->deltaTime_, *ctx_, *this);
-    game.lateUpdate(*this, frame);
+    game.lateUpdate(*this, dt);
     systems_->transforms_->update(registry_, *instanceManager_);
     instanceManager_->uploadRemainingFrameDirty(*ctx_);
+}
+
+InputManager& World::input()
+{
+    return *ctx_->inputManager_;
 }
 
 void World::resetScene()

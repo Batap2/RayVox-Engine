@@ -172,9 +172,18 @@ Indépendant des chantiers ci-dessus, à prendre à la pièce.
       `World::update(Game&, Frame&)` porte l'ordre de la frame. Reste ouvert
       si un vrai besoin apparaît : système « outil » tournant dans l'éditeur
       hors Play.
-- [ ] **Requêtes** : pas de raycast, pas de `findByName`, pas de query spatiale
-      (`Bbox.hpp` existe, inutilisé).
-- [ ] **Timestep fixe, pause, timescale** — il n'y a que `Engine::deltaTime_`.
+- [ ] **Requêtes** — redécoupé par la décision Jolt (§7) : raycast, overlap et
+      query spatiale viendront des requêtes Jolt (toute entité à collider est
+      requêtable), pas d'une structure maison. Reste côté moteur :
+      `findByName`, et un kNN par grille de hash le jour où des entités sans
+      collider en auront besoin.
+- [x] **Timestep fixe, pause, timescale** — fait : `World::Time`
+      (`scale_`/`paused_`/`fixedDt_`, accumulateur cappé à 0.25 s contre la
+      spirale) ; `Game::fixedUpdate(World&, float)` appelé 0..n fois par frame,
+      `update`/`lateUpdate` reçoivent le dt scalé (0 en pause) au lieu de
+      `Frame&` — l'input passe par `world.input()`. Les systèmes éditeur
+      (freecam) restent sur le dt brut, la pause ne les touche pas. Reste pour
+      Jolt : l'interpolation du rendu entre deux états fixes.
 - [x] **`v3f`/`m4f`/`quatf`/`transform` dans le namespace global** — déjà le
       cas, `EigenTypes.h` n'a pas de namespace.
 - [x] **`EntityHandle::emplace<T>()` ne transmet pas d'arguments**, et pas de
@@ -183,6 +192,39 @@ Indépendant des chantiers ci-dessus, à prendre à la pièce.
 - [ ] **Budget de staging par frame** — un débordement lève désormais au lieu de
       corrompre, mais une frame lourde (import d'un gros mesh) tue le process.
       Allocateur de staging par blocs recyclés derrière une fence.
+
+## 7. Structures d'accélération & physique
+
+Décision (2026-09-11) : la physique sera **Jolt** — pas de broadphase ni de
+TLAS maison, ce serait dupliquer son arbre AABB (lock-free, rebuild en fond).
+Conséquence : les requêtes gameplay (raycast, overlap, shape cast) passeront
+par Jolt, comme Unity/Unreal passent par PhysX. Le kd-tree/BVH gameplay
+envisagé un temps est abandonné ; ce qui reste à nous est côté rendu.
+
+- [ ] **Timestep fixe d'abord** (item du §6) — Jolt se simule à pas fixe.
+- [ ] **Intégrer Jolt** :
+      - lib vendored dans `include/`, compilée par notre CMake ;
+      - `RigidBody_C` / `Collider_C` en composants plats réfléchis
+        (`BATAP_COMPONENT`) — les objets Jolt vivent côté hôte (jamais dans la
+        DLL jeu, cf. règle hot reload), reliés par un handle ;
+      - un système hôte : pousser les transforms kinematic → Jolt, simuler à
+        pas fixe, lire les transforms dynamic → `setLocalPosition/Rotation`
+        (le markDirty suit) ;
+      - exposer les requêtes : `world.raycast(...)`, `world.overlapSphere(...)`
+        → Jolt, avec filtrage par layers.
+- [ ] **GPU-driven culling two-phase Hi-Z** (indépendant de Jolt, la techno de
+      niche) :
+      1. AABB par instance (`Bbox.hpp` enfin utilisé) dans les données GPU ;
+      2. frustum culling en compute + `vkCmdDrawIndexedIndirectCount` (le
+         CPU n'émet plus les draws un par un) ;
+      3. pyramide de profondeur (HZB) construite depuis le depth buffer ;
+      4. two-phase : dessiner les visibles de la frame N-1 → construire la
+         HZB → tester le reste en compute → dessiner les faux-culls.
+      Prérequis notes/vigilance : slots GPU stables (le culling GPU persiste
+      des index entre frames — la free-list remplace le swap-remove).
+- [ ] **Picking éditeur par id-buffer GPU** — rendre les ids d'entité dans une
+      petite target, lire le pixel sous la souris. Pixel-perfect sur le mesh
+      de rendu, pas de BVH CPU.
 
 ---
 

@@ -47,7 +47,7 @@ App::App(Engine& engine, World& world)
     loadRecentProjects();
 }
 
-void App::update(Frame& frame)
+void App::update()
 {
     pumpMsgFileDialog();
     pumpGameModuleReload();
@@ -60,7 +60,7 @@ void App::update(Frame& frame)
     {
         uiPanels_.draw(*world_, *this, *ctx_);
         if (playing_ && game_)
-            world_->update(*game_, frame);
+            world_->update(*game_);
         else
             world_->update();
     }

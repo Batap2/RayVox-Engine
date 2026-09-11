@@ -22,16 +22,6 @@ Frame::~Frame()
     engine_->endFrame();
 }
 
-InputManager& Frame::input() const
-{
-    return *engine_->inputManager_;
-}
-
-float Frame::dt() const
-{
-    return engine_->deltaTime_;
-}
-
 Engine::Engine(const WindowDesc& desc) : title_(desc.title), fpsInTitle_(desc.fpsInTitle)
 {
     // Components self-registered at static init (BATAP_COMPONENT); field

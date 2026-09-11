@@ -29,7 +29,7 @@ int runEditor(const EditorConfig& cfg)
                 app.game_ = app.gameModule_.makeGame();
 
         while (Frame frame = engine.nextFrame())
-            app.update(frame);
+            app.update();
 
         return 0;
     }

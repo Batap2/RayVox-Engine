@@ -23,7 +23,7 @@ struct App
 {
     App(Engine& engine, World& world);
 
-    void update(Frame& frame);
+    void update();
 
     // Play serializes the scene to memory and
     // starts ticking the game; Stop reloads the snapshot as if it were a file.

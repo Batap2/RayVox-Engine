@@ -33,9 +33,6 @@ struct Frame
 
     explicit operator bool() const { return alive_; }
 
-    InputManager& input() const;
-    float dt() const;
-
    private:
     friend struct Engine;
     Frame(Engine* engine, bool alive) : engine_(engine), alive_(alive) {}

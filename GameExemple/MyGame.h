@@ -8,7 +8,7 @@ namespace batap
 {
 struct MyGame : Game
 {
-    void update(World& world, Frame& frame) override
+    void update(World& world, float dt) override
     {
         auto& reg = world.registry_;
         for (auto [e, rot] : reg.view<Rotator_C>().each())
@@ -18,7 +18,7 @@ struct MyGame : Game
             if (!t)
                 continue;
             const quatf q =
-                (t->rot() * angleaxisf(rot.speed_ * frame.dt(), v3f::UnitZ())).normalized();
+                (t->rot() * angleaxisf(rot.speed_ * dt, v3f::UnitZ())).normalized();
             h.setLocalRotation(q);
         }
         world.spawn("mesh");
