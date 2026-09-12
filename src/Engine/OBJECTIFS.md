@@ -1,246 +1,136 @@
 # Objectifs
 
-**État (2026-09-08)** : le port Vulkan est fini et mergé sur `main` — un seul
-backend (`Renderer/Vulkan/`), DX12 supprimé. La simplification du pipeline
-composant (§2) est faite pour l'essentiel : voir les cases cochées. Ce plan
-reprend la revue d'architecture d'août 2026 et l'ancien suivi `TODO.md`,
-revérifiés ligne à ligne contre le code d'aujourd'hui.
-
-Fil conducteur inchangé : réduire ce qu'un dev doit toucher pour ajouter un
-composant, et faire du composant de jeu un citoyen de première classe partout
-(éditeur, sérialisation, play mode, hot reload). Tout repose sur le même
-investissement déjà en place : la réflexion (`BATAP_COMPONENT` +
-`ComponentRegistry`).
+**État (2026-09-11)** : Vulkan only. Pipeline composant réflexif
+(`BATAP_COMPONENT`), éditeur-lib, Play/Stop, hot reload du jeu (DLL + snapshot
+JSON), façade gameplay (`EntityHandle`/`World`, `batap.h`), timestep fixe —
+tout ça est fait ; l'historique détaillé vit dans git. Fil conducteur
+inchangé : réduire ce qu'un dev doit toucher, une seule source de vérité par
+concept.
 
 ---
 
-## 0. Déjà fait (ne pas re-proposer)
+## 1. Physique — Jolt (chantier courant)
 
-- **FXC → DXC** — fait et dépassé : `dxc` compile les HLSL en SPIR-V au build
-  (`batap_compile_shader` dans `src/Engine/CMakeLists.txt`) et au runtime via
-  `libdxcompiler` chargée en dlopen (`VulkanShaderCompiler`).
-- **Hot reload shaders** — `ScenePasses::checkHotReload()` : mtime sur les
-  sources HLSL de l'arbre, recompilation runtime, rebuild des pipelines hors
-  enregistrement de commandes (`vkDeviceWaitIdle`).
-- **Corruption du ring d'upload** — `requestUpload`/`requestPartialUpload`
-  rendent un span dans le staging de la frame ; un débordement lève une
-  exception franche au lieu d'écraser une zone en vol. Reste le budget (§6).
-- **Shutdown** — `resources_`/`scenePasses_` en `unique_ptr`, `vkDeviceWaitIdle`
-  dans `Renderer::~Renderer`.
-- **Header interop C++/HLSL** — `Shaders/ShaderInterop.h` : `CameraGPUData`,
-  `StaticMeshGPUData`, `PointLightGPUData`, `Material`, `SkyboxGPUData`,
-  `DrawPush` et les numéros de set/binding y sont déclarés une fois, compilés
-  en HLSL par dxc et en C++ par le moteur (`static_assert` de taille et
-  d'offset côté C++). Les copies dans les `.hlsl` ont disparu.
-- Divers : accesseurs d'input (`down`/`pressed`/`released`/`wheel`),
-  `EntityHandle::get()` n'est plus `noexcept`-et-throw, `GameExemple/` a
-  enfin du code (`main.cpp`), convention de nommage `var_` passée partout,
-  `Hierarchy_S::setParent` implémenté.
+Décisions actées :
+- **Jolt** (broadphase lock-free, requêtes complètes, adopté par Godot 4.4,
+  shippé par Horizon FW) — pas de physique maison, pas de BVH gameplay maison.
+- Les requêtes gameplay (raycast, overlap, sweep) passent par Jolt — toute
+  entité à collider est requêtable, comme `Physics.Raycast`/PhysX chez Unity.
+- Le `PhysicsSystem` Jolt vit dans **`World`** (pas `Engine` : deux Worlds ne
+  partagent pas leurs corps), côté hôte (jamais dans la DLL jeu).
+- **v1 = formes primitives** (box/sphère/capsule) : `Mesh` ne garde aucune
+  donnée CPU, un `MeshShape` exigerait de relire le `.bmesh` — plus tard.
 
-## 1. Hygiène immédiate (quelques heures, aucun risque)
+Étapes, chacune validable seule :
 
-- [x] **Round-trip des composants inconnus** dans `EntitySerializer` — fait :
-      un composant non enregistré est stocké tel quel (`UnknownComponents_C`,
-      blob JSON) au load et réémis au save.
-- [x] **Supprimer `RenderInstance_C`** — fait (`RenderInstanceID_C.h` supprimé,
-      plus aucune référence).
-- [x] **`GPUInstanceID` par défaut = invalide** — fait, défaut = `uint32_max`.
-- [x] **`Transform_S::setParent` déclaré, jamais défini** — fait, déclaration
-      morte supprimée (`Hierarchy_S::setParent` reste la référence).
-- [x] **`FreeCamController_C.h`** — fait, `#pragma once` + `namespace batap`.
-- [x] **Supprimer `include/DirectX-Headers`** — fait.
+- [x] **1. Vendoring + build** — fait : submodule `include/JoltPhysics` épinglé
+      **v5.6.0**, `add_subdirectory(Build)`, linké dans `Batap_Engine`. Les
+      defines `JPH_*` et les flags ISA sont PUBLIC sur la cible → l'ODR est
+      garanti par le link (conséquence : `/arch:AVX2` s'applique à tout le
+      moteur). Jolt part en **DLL** (`JPH_BUILD_SHARED_LIBS ON`, explicite) →
+      une seule copie partagée éditeur/DLL jeu, `Jolt.dll` copiée dans `bin/`.
+      Validé par un smoke test temporaire (supprimé depuis) : sphère lâchée
+      de y=4, au repos à y≈0.48 après 120 steps (0.5 − penetration slop 2 cm,
+      normal).
+- [x] **2. Monde physique dans `World`** — fait : `Physics/PhysicsWorld`
+      (temp allocator, job pool, layers, `JPH::PhysicsSystem`) possédé par
+      `World`, `clear()` appelé dans `resetScene()` — le registry meurt au
+      Play/Stop et au hot reload, les corps meurent avec. `JoltRuntime`
+      (Factory + `RegisterTypes`, process-wide) est refcompté et déclaré
+      premier membre : `TempAllocatorImpl` alloue déjà via l'allocateur Jolt.
+      Les includes de Jolt sont passés en SYSTEM côté racine, sinon
+      `-Weverything -Werror` refuse ses headers. Validé par instrumentation
+      temporaire du ctor de `World` : sphère au repos à y=0.48 après 120 steps,
+      2 corps → 0 après `resetScene()`.
+- [ ] **3. Composants** — `RigidBody_C` (motion type, masse, friction...) et
+      `Collider_C` (forme primitive + dimensions), plats, `BATAP_COMPONENT`.
+      Le `BodyID` (uint32) est de l'état runtime : membre **non réfléchi**,
+      jamais dans un `.btpl`.
+- [ ] **4. Sync ECS ↔ Jolt** — un système hôte : corps créés à l'apparition
+      du composant (hooks entt, comme les pools GPU), transforms kinematic
+      poussés vers Jolt, step à `fixedDt_`, read-back des dynamic via
+      `setLocalPosition/Rotation` (le markDirty suit tout seul).
+- [ ] **5. Interpolation du rendu** entre les deux derniers états fixes —
+      sans elle, saccade dès que `fixedDt_` est plus lent que le framerate.
+- [ ] **6. Requêtes** — `world.raycast(...)`, `world.overlapSphere(...)` →
+      Jolt, filtrage par layers.
+- [ ] `fixedLateUpdate` seulement si un cas concret le réclame (Unity n'en a
+      pas ; les contacts passent par les listeners Jolt).
 
-## 2. Simplification du pipeline composant — FAIT (sept. 2026), reste un item
+## 2. Structures d'accélération (rendu)
 
-Objectif atteint : ajouter un composant GPU-visible = le header du composant
-(`BATAP_COMPONENT`) + un bloc compact dans `InstanceDeclaration.h` (struct
-interop dans `ShaderInterop.h`, `Uses`, `fill()`, une ligne dans
-`GPUInstances`). Zéro plomberie.
+Le partage est réglé par le §1 : Jolt possède la seule structure CPU et ne
+voit que les colliders. À nous le côté rendu — trois structures, dans l'ordre.
+Rappel : **le frustum culling ne demande aucune structure** — en GPU-driven,
+un compute teste linéairement les AABB de toutes les instances contre les 6
+plans ; l'octree/BVH de culling est une optimisation CPU d'une autre époque.
+Pas d'étape intermédiaire frustum CPU : elle serait jetée au GPU-driven.
 
-- [x] **Patches partiels → un `fill()` unique par instance** —
-      `PatchDesc`/`PatchRange`/`byBit` supprimés, la struct entière est
-      ré-uploadée.
-- [x] **Pools peuplés par hooks entt** — `on_construct`/`on_destroy` sur le
-      composant marqueur (tête de `Uses`) : la présence du composant *est*
-      l'appartenance au pool. Les modifications passent par
-      `EntityHandle::write<T>`/`markDirty` (pas d'`on_update` — une écriture directe
-      via `reg.get<T>()` n'atteint pas le GPU, contrat assumé).
-- [x] **Kind dérivé des composants** — `markDirty` route par
-      `(changed & pool.usedComponents_) && pool.contains(handle)`. `EntityKind`,
-      `Kind_C`, `ComponentFlag` et le switch du load ont disparu ; le load crée
-      l'entité et applique les composants reflétés, fin.
-- [x] **Factories → spawnables data-driven** — `Spawnable.h` : une table
-      (id, label, icône, composants à emplacer) que `ScenePanel` et le
-      factory bouclent.
-- [x] **Règle officielle : un composant = valeurs plates + handles** —
-      `static_assert` à l'enregistrement (`addComponentType`). Test retenu :
-      `is_trivially_destructible` et non `is_trivially_copyable` — les types
-      Eigen ont un copy ctor défini mais un stockage plat memcpy-able ; le
-      but réel est d'interdire `std::string`/`std::vector` (§5).
-- ~~`ComponentFlag` reste manuel~~ — obsolète : les bits (`ComponentMask`) sont
-      assignés par le `ComponentRegistry` à l'init statique, plus d'enum du tout.
+- [ ] **1. Plomberie AABB** — le socle. AABB locale par mesh calculée à
+      l'import (stockée dans le `.bmesh`), AABB monde par instance recalculée
+      quand le transform change (le dirty-marking sait déjà quand).
+      `Bbox.hpp` sort enfin du placard.
+- [ ] **2. GPU-driven culling two-phase Hi-Z** :
+      1. **arena géométrique** : un draw indirect ne rebinde pas de buffers,
+         or chaque mesh a le sien (`createStaticBuffer` par mesh) — tous les
+         meshes dans un buffer partagé, offsets par mesh ; le `submeshIndex_`
+         en push constant migre dans la donnée par-draw (`firstInstance`) ;
+      2. frustum culling en compute + `vkCmdDrawIndexedIndirectCount` — le
+         CPU passe de ~8000 commandes/frame à 2 ;
+      3. pyramide de profondeur (HZB) min-depth depuis le depth buffer ;
+      4. two-phase : dessiner les visibles de N-1 → construire la HZB →
+         tester le reste → dessiner les faux-culls.
+      Prérequis (cf. notes) : slots GPU stables — free-list au lieu de
+      swap-remove.
+- [ ] **3. Grille de clusters de lumières** (froxels) — chaque cellule de vue
+      liste ses lumières. Prérequis de tout éclairage à N lumières ; ressert
+      pour le brouillard volumétrique.
+- [ ] **Picking éditeur par id-buffer GPU** — les ids d'entité rendus dans une
+      petite target, lecture du pixel sous la souris. Pixel-perfect sur le
+      mesh de rendu (les colliders Jolt sont simplifiés).
+- [ ] Au besoin : **grille de hash spatiale** pour du kNN sur des entités sans
+      collider. ~100 lignes, le jour venu.
 
-## 3. Éditeur en bibliothèque (le modèle Unity/UE, version statique)
+### Décision différée : RT hardware
 
-Problème résolu : le `ComponentRegistry` vit par binaire ; l'éditeur ne connaît
-pas les composants du jeu → perte de données (mitigée par le round-trip du §1,
-réglée pour de bon ici). État actuel : `Batap_Editor` est un `add_executable`
-qui glob `src/Editor/*` — il n'y a rien à lier pour un jeu.
+Le TLAS/BLAS driver (`VK_KHR_acceleration_structure` + `ray_query`)
+débloquerait ombres/AO/réflexions puis DDGI/ReSTIR, chaque étape « un shader
+de plus ». Mais ~1/3 du parc Steam n'a pas de RT (RTX ≈ 60 %, GTX ≈ 12,5 % +
+vieux AMD/iGPU) : les shadow maps devront exister de toute façon, donc le RT
+n'économise rien — il s'ajoute. Décision au chantier éclairage ; les trois
+structures ci-dessus n'engagent rien. Pari actuel : shadow maps universelles,
+RT en tier optionnel si `ray_query` présent. Alternative sans RT : SDF façon
+Lumen software, beaucoup plus de code.
 
-- [x] **`src/Editor` → lib `Batap_EditorLib`** avec un point d'entrée
-      `runEditor(cfg)` (`EditorApp.h`). Le wWinMain/main + try/catch vivent une
-      seule fois dans `EntryPoint.cpp`, compilé dans chaque exe par le helper
-      CMake `batap_add_editor(name sources...)` (pas dans la lib : un objet
-      jamais référencé d'une lib statique serait droppé par le linker).
-- [x] **L'éditeur standalone** : `batap_add_editor(Batap_Editor main.cpp)`,
-      `main.cpp` = la définition d'`editorConfig()`, trois lignes.
-- [x] **Chaque jeu déclare une cible `MyGame_Editor`** : `editor_main.cpp` qui
-      inclut `GameComponents.h` (header agrégateur, par convention) +
-      `editorConfig()`. Fait pour `GameExemple_Editor` (composant d'exemple
-      `Rotator_C`). L'init statique enregistre les composants du jeu dans le
-      binaire éditeur : inspecteur, menu add-component et sérialisation
-      marchent nativement, zéro schéma, zéro manifeste.
+## 3. Restes
 
-## 4. Play / Stop (modèle snapshot, à la Unity)
-
-- [x] **Interface `Game { init(World&); update(World&, Frame&); }`** —
-      `src/Engine/Game.h`. Le `main()` de `GameExemple` est devenu boucle
-      moteur + `game.update()` (`MyGame.h`) ; l'éditeur reçoit le jeu via
-      `EditorConfig.makeGame_` (branché dans `editor_main.cpp`).
-- [x] **Play** : `EntitySerializer::toBuffer(world)` → string JSON en mémoire ;
-      `game.init()` puis `game.update()` chaque frame.
-      **Stop** : `clearSceneAndLoadBuffer()` (mêmes clear + populate que le
-      load fichier). Bouton ▶/⏹ dans la barre de menu.
-- [x] Vider la sélection éditeur au Stop (les `EntityHandle` meurent).
-- [x] **Bouton « Run » en process séparé** — `App::runStandalone()` : scène
-      courante → `%TEMP%/batap_run.btpl`, spawn de l'exe du jeu
-      (`EditorConfig.gameExeName_`) avec `--project` + `--scene`. Un jeu qui crashe
-      n'emporte pas l'éditeur.
-
-## 5. Hot reload du code (les shaders sont faits, cf. §0)
-
-- [x] **Jeu en bibliothèque dynamique** + boucle hôte — fait :
-      `GameExemple_Game.dll` (`game_module.cpp`, un export C `batapGameEntry`),
-      chargée par l'éditeur nu via `--game`. La logique complète (duplication
-      des globals, fusion `importFrom`, recâblage des index, patch drawUI) est
-      documentée en tête de `src/Engine/GameModule.h`. Watch mtime (throttlé
-      0.5 s) + swap dans `GameModuleLoader`/`App::pumpGameModuleReload` ;
-      copie `X_loaded_{n}.dll` (verrou Windows), `#ifdef` mac déjà en place.
-      État préservé par snapshot JSON (le mécanisme Play/Stop) en attendant le
-      binaire ci-dessous ; le registry entt est reconstruit au swap (ses
-      storages tiennent des pointeurs de code DLL).
-- [ ] **Préservation d'état par snapshot binaire + hash de layout** — PAS de JSON,
-      PAS de handoff de pointeur brut (pattern Odin : garde des pointeurs vers la
-      vieille lib, interdit de la décharger, casse si une struct change) :
-      - snapshot binaire par pool (memcpy — composants trivially copyable, cf. §2) ;
-      - au reload, hash du layout par type (champs : nom+type+offset, tout est
-        dans le registry) ;
-      - type inchangé → restore memcpy ; type modifié → migration champ-par-champ
-        (le mécanisme de désérialisation existant), payée seulement par ce type.
-      Coût dominé par le link (~50-100 ms), indépendant de la taille de la scène.
-      Les assets/GPU vivent côté hôte : jamais rechargés.
-- [x] entt à travers la frontière dynamique — réglé sans `ENTT_STANDARD_CPP` :
-      les deux modules sont compilés par le même clang, les type ids par
-      défaut (hash du nom via pretty-function) sont identiques des deux côtés.
-      `ENTT_STANDARD_CPP` ferait l'inverse (ids séquentiels par module).
-- [ ] Règle côté jeu : pas d'état statique dans la lib (tout état vit dans le World).
-
-## 6. Ergonomie moteur (repris de l'ancien `TODO.md`)
-
-Indépendant des chantiers ci-dessus, à prendre à la pièce.
-
-- [x] **Façade jeu + header parapluie `batap.h`** — fait (modèle fat handle) :
-      les opérations vivent sur les objets, pas dans une couche à part.
-      `EntityHandle` porte `setLocalPosition`/`setLocalRotation`/`translate`/
-      `rotate`/`scale`/`setParent` (le registry porte un `World*` dans son
-      `ctx()`, plus `write<T>` — marque eager à l'acquisition, modèle
-      flecs/Unity — et `markDirty` pour les autres composants GPU ; le
-      `WriteProxy` opt-in a été supprimé) ; `Scene` a été fusionnée dans
-      `World` (`world.registry_` — la hiérarchie Scene/DefaultScene ne
-      portait plus rien depuis les scènes data-driven) ; `World` porte
-      `spawn(id)`/`destroy` et ses `unique_ptr` sont privés
-      (`systems()`/`instances()`/`factory()` pour les internes moteur/éditeur).
-      `batap.h` = Engine + Game + InputManager + World.
-- [x] **`loadAsset<T>()` typé** — fait : `loadAsset<Mesh>(path, ctx)` retourne
-      un `MeshHandle` (null si échec ou mauvais type). La version non typée
-      reste pour les chemins génériques (asset picker, désérialisation).
-- [x] **Systèmes utilisateur** — décision : pas d'enregistrement. Le pattern
-      officiel est une boucle sur un view appelée depuis `Game::update` (le
-      jeu ordonne ses systèmes lui-même). Ajouté `Game::lateUpdate`, appelé
-      après le flush des transforms (matrices world de la frame courante :
-      caméra follow, look-at) avec un second flush avant l'upload —
-      `World::update(Game&, Frame&)` porte l'ordre de la frame. Reste ouvert
-      si un vrai besoin apparaît : système « outil » tournant dans l'éditeur
-      hors Play.
-- [ ] **Requêtes** — redécoupé par la décision Jolt (§7) : raycast, overlap et
-      query spatiale viendront des requêtes Jolt (toute entité à collider est
-      requêtable), pas d'une structure maison. Reste côté moteur :
-      `findByName`, et un kNN par grille de hash le jour où des entités sans
-      collider en auront besoin.
-- [x] **Timestep fixe, pause, timescale** — fait : `World::Time`
-      (`scale_`/`paused_`/`fixedDt_`, accumulateur cappé à 0.25 s contre la
-      spirale) ; `Game::fixedUpdate(World&, float)` appelé 0..n fois par frame,
-      `update`/`lateUpdate` reçoivent le dt scalé (0 en pause) au lieu de
-      `Frame&` — l'input passe par `world.input()`. Les systèmes éditeur
-      (freecam) restent sur le dt brut, la pause ne les touche pas. Reste pour
-      Jolt : l'interpolation du rendu entre deux états fixes.
-- [x] **`v3f`/`m4f`/`quatf`/`transform` dans le namespace global** — déjà le
-      cas, `EigenTypes.h` n'a pas de namespace.
-- [x] **`EntityHandle::emplace<T>()` ne transmet pas d'arguments**, et pas de
-      surcharges `const` sur `get`/`try_get` — fait : forwarding variadique +
-      surcharges `const`.
-- [ ] **Budget de staging par frame** — un débordement lève désormais au lieu de
-      corrompre, mais une frame lourde (import d'un gros mesh) tue le process.
+- [ ] **Hot reload : snapshot binaire + hash de layout** (remplace le JSON) —
+      snapshot memcpy par pool (composants trivially copyable), hash de layout
+      par type (nom+type+offset, tout est dans le registry) ; type inchangé →
+      restore memcpy, type modifié → migration champ-par-champ payée par ce
+      type seul. Coût dominé par le link, indépendant de la taille de scène.
+- [ ] **`findByName`** — la seule requête qui reste côté moteur.
+- [ ] **Budget de staging par frame** — un débordement lève au lieu de
+      corrompre, mais une frame lourde (gros import) tue le process.
       Allocateur de staging par blocs recyclés derrière une fence.
-
-## 7. Structures d'accélération & physique
-
-Décision (2026-09-11) : la physique sera **Jolt** — pas de broadphase ni de
-TLAS maison, ce serait dupliquer son arbre AABB (lock-free, rebuild en fond).
-Conséquence : les requêtes gameplay (raycast, overlap, shape cast) passeront
-par Jolt, comme Unity/Unreal passent par PhysX. Le kd-tree/BVH gameplay
-envisagé un temps est abandonné ; ce qui reste à nous est côté rendu.
-
-- [ ] **Timestep fixe d'abord** (item du §6) — Jolt se simule à pas fixe.
-- [ ] **Intégrer Jolt** :
-      - lib vendored dans `include/`, compilée par notre CMake ;
-      - `RigidBody_C` / `Collider_C` en composants plats réfléchis
-        (`BATAP_COMPONENT`) — les objets Jolt vivent côté hôte (jamais dans la
-        DLL jeu, cf. règle hot reload), reliés par un handle ;
-      - un système hôte : pousser les transforms kinematic → Jolt, simuler à
-        pas fixe, lire les transforms dynamic → `setLocalPosition/Rotation`
-        (le markDirty suit) ;
-      - exposer les requêtes : `world.raycast(...)`, `world.overlapSphere(...)`
-        → Jolt, avec filtrage par layers.
-- [ ] **GPU-driven culling two-phase Hi-Z** (indépendant de Jolt, la techno de
-      niche) :
-      1. AABB par instance (`Bbox.hpp` enfin utilisé) dans les données GPU ;
-      2. frustum culling en compute + `vkCmdDrawIndexedIndirectCount` (le
-         CPU n'émet plus les draws un par un) ;
-      3. pyramide de profondeur (HZB) construite depuis le depth buffer ;
-      4. two-phase : dessiner les visibles de la frame N-1 → construire la
-         HZB → tester le reste en compute → dessiner les faux-culls.
-      Prérequis notes/vigilance : slots GPU stables (le culling GPU persiste
-      des index entre frames — la free-list remplace le swap-remove).
-- [ ] **Picking éditeur par id-buffer GPU** — rendre les ids d'entité dans une
-      petite target, lire le pixel sous la souris. Pixel-perfect sur le mesh
-      de rendu, pas de BVH CPU.
 
 ---
 
 ## Notes / vigilance (pas des tâches)
 
-- **IDs GPU instables** (swap-remove dans les pools) : correct aujourd'hui, mais
-  dès que quelque chose côté GPU persiste un index entre frames (culling GPU-driven,
-  historique TAA, picking différé), il faudra des slots stables + free-list.
+- **Règle DLL jeu : zéro état statique** — tout état durable vit dans le World
+  (composants plats). Un static dans la DLL meurt au reload.
+- **IDs GPU instables** (swap-remove dans les pools) : correct aujourd'hui,
+  mais le culling GPU-driven, un historique TAA ou un picking différé
+  persistent des index entre frames → slots stables + free-list (§2.2).
 - Le triple-buffering des instance buffers est assumé (`FramesInFlight = 3`,
-  choix simplicité/sécurité).
-- Composants avec `std::string`/`std::vector` : basculent dans le chemin migration
-  du hot reload même à layout constant — à éviter par design (handles + valeurs plates).
-- **Descriptor layouts câblés à la main** (`FrameSetBindingCount` côté scène, set
-  bindless côté `ResourceManager`) : la réflexion SPIR-V du §1 les rendrait
-  dérivables des shaders. Même chose pour une UI matériaux auto-générée depuis
-  les structs de matériau. Même philosophie que `BATAP_COMPONENT` : source de
-  vérité unique. À faire quand le nombre de bindings commencera à faire mal.
-- Le chemin Windows (Win32Window, surface Win32, `dxcompiler.dll`) est écrit mais
-  n'a jamais été compilé : prévoir une passe de fix, pas une réécriture.
+  simplicité/sécurité).
+- Composants avec `std::string`/`std::vector` : interdits par design (handles
+  + valeurs plates) — le `static_assert` de l'enregistrement les refuse.
+- **Descriptor layouts câblés à la main** (`FrameSetBindingCount`, set
+  bindless) : la réflexion SPIR-V les rendrait dérivables des shaders, comme
+  une UI matériaux auto-générée. Même philosophie que `BATAP_COMPONENT`. À
+  faire quand le nombre de bindings fera mal.
+- Le chemin **macOS** (`Platform/MacOS/*.mm`, MoltenVK) est écrit mais n'a
+  jamais été compilé : prévoir une passe de fix, pas une réécriture. MoltenVK
+  ne traduit pas `ray_query`.

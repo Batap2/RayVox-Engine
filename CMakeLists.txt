@@ -50,6 +50,19 @@ set(ASSIMP_BUILD_TESTS        OFF CACHE BOOL "" FORCE)
 set(ASSIMP_NO_EXPORT          ON  CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL            OFF CACHE BOOL "" FORCE)
 
+# Jolt's JPH_* defines and ISA flags (/arch:AVX2) are PUBLIC on the target:
+# every consumer compiles with the same ones, so ODR holds by construction.
+set(ENABLE_ALL_WARNINGS          OFF CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_FLAGS           OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL               OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12                 OFF CACHE BOOL "" FORCE)
+# Shared, explicitly: the editor exe and the game DLL each embed their own
+# static copy of Batap_Engine; a static Jolt would give two Factory and two
+# JPH::Allocate (null on the DLL side). Do not rely on the BUILD_SHARED_LIBS
+# assimp leaves in the cache.
+set(JPH_BUILD_SHARED_LIBS        ON  CACHE BOOL "" FORCE)
+
 # ------------------------------------------------------------------------------
 # Third-party dependencies
 # ------------------------------------------------------------------------------
@@ -76,6 +89,12 @@ add_subdirectory("${include_dir}/vk-bootstrap")
 # assimp : consommé par Importers/ (import éditeur)
 add_subdirectory("${include_dir}/assimp")
 add_subdirectory("${include_dir}/tracy")
+add_subdirectory("${include_dir}/JoltPhysics/Build")
+# Jolt publishes its headers as non-SYSTEM includes; -Weverything -Werror would
+# turn every one of its warnings into our build error.
+get_target_property(_jolt_includes Jolt INTERFACE_INCLUDE_DIRECTORIES)
+set_target_properties(Jolt PROPERTIES
+  INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_jolt_includes}")
 
 # ------------------------------------------------------------------------------
 # Common warnings target

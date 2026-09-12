@@ -19,6 +19,7 @@ struct AssetManager;
 struct Spawnable;
 struct Game;
 struct InputManager;
+struct PhysicsWorld;
 
 struct Time
 {
@@ -49,6 +50,7 @@ struct World
     void destroy(EntityHandle h);
 
     Systems& systems() { return *systems_; }
+    PhysicsWorld& physics() { return *physics_; }
     GPUInstanceManager& instances() { return *instanceManager_; }
     EntityFactory& factory() { return *entityFactory_; }
 
@@ -57,6 +59,7 @@ struct World
 
    private:
     std::unique_ptr<Systems> systems_;
+    std::unique_ptr<PhysicsWorld> physics_;
     std::unique_ptr<GPUInstanceManager> instanceManager_;
     std::unique_ptr<EntityFactory> entityFactory_;
 

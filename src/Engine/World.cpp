@@ -11,6 +11,7 @@
 #include "InputManager.h"
 #include "Instance/EntityFactory.h"
 #include "Instance/InstanceManager.h"
+#include "Physics/PhysicsWorld.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/SceneBinding.h"
 #include "Serialization/EntitySerializer.h"
@@ -22,6 +23,7 @@ namespace batap
 World::World(Engine& ctx) : ctx_(&ctx)
 {
     systems_ = std::make_unique<Systems>();
+    physics_ = std::make_unique<PhysicsWorld>();
     instanceManager_ = std::make_unique<GPUInstanceManager>(ctx);
     entityFactory_ = std::make_unique<EntityFactory>();
 
@@ -94,6 +96,8 @@ void World::resetScene()
     reg = entt::registry{};
     reg.ctx().emplace<World*>(this);
     instanceManager_->connectHooks(reg);
+
+    physics_->clear();
 }
 
 bool World::loadScene(const std::string& path)

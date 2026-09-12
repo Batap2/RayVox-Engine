@@ -1,0 +1,34 @@
+Réflexion sur les structs
+Le but : savoir à l'exécution de quoi une struct est faite, sans rien écrire à la main par composant. Trois choses à extraire, chacune par une technique différente.
+
+1. Le nombre de membres
+
+On essaie de construire la struct avec des arguments capables de se convertir en n'importe quoi (AnyType). Un requires teste si ça compile. Ça échoue seulement s'il y a trop d'arguments — moins que le nombre de champs reste valide. Donc on part de 16 et on descend : le premier N qui compile est le bon.
+
+2. Le type et l'offset des membres
+
+Structured binding sur la struct, puis std::tie sur les noms liés → un tuple de références.
+
+Le type sort du type du tuple (tuple_element_t<I> + remove_reference).
+L'offset sort de la différence entre l'adresse de la référence et celle de l'objet.
+3. Le nom des membres
+
+Pour chaque struct réfléchie, une instance globale est générée (Probe<T>::value). On y prend le pointeur du membre n°I, et on le passe en paramètre template à une fonction.
+
+__PRETTY_FUNCTION__ donne la signature complète de cette fonction, paramètres template inclus — et clang y écrit le chemin du membre en toutes lettres. On découpe la chaîne pour ne garder que le nom.
+
+Ce qu'on en stocke
+Un registre de fiches de struct (ComponentType), contenant :
+
+des fiches de membre (Field) : nom, offset, et un pointeur vers la fiche de son type ;
+des pointeurs de fonction type-effacés pour créer / lire / supprimer / copier le composant.
+À côté, une fiche par type C++ (FieldType) : toJson, fromJson, drawUI. Celles-là sont écrites à la main, une par type, et vivent dans des slots statiques remplis à l'exécution.
+
+Frontière DLL
+La DLL a sa propre copie de tout ça — son registre, ses slots. importFrom fusionne par nom dans le registre de l'éditeur.
+
+Résultat pour afficher un composant du jeu dans l'inspecteur :
+
+les pointeurs de fonction (créer, lire le composant) → code DLL, seul à connaître le type ;
+le nom et l'offset des membres → données copiées de la DLL ;
+le drawUI → code éditeur, que l'éditeur installe après coup dans les slots de la DLL (ils y sont nuls, la DLL ne connaît pas ImGui).

@@ -92,6 +92,7 @@ target_link_libraries(Batap_Engine PUBLIC
   volk
   vk-bootstrap::vk-bootstrap
   assimp
+  Jolt
 )
 if(APPLE)
   target_link_libraries(Batap_Engine PUBLIC
