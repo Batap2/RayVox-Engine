@@ -88,6 +88,12 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::cullBack()
     return *this;
 }
 
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::topology(VkPrimitiveTopology topology)
+{
+    topology_ = topology;
+    return *this;
+}
+
 VkPipeline GraphicsPipelineBuilder::build(VkDevice device, VkPipelineLayout layout) const
 {
     VkPipelineShaderStageCreateInfo stages[2]{};
@@ -109,7 +115,7 @@ VkPipeline GraphicsPipelineBuilder::build(VkDevice device, VkPipelineLayout layo
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = topology_;
 
     VkPipelineViewportStateCreateInfo viewportState{};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;

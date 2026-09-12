@@ -33,6 +33,7 @@ struct GraphicsPipelineBuilder
     GraphicsPipelineBuilder& colorFormat(VkFormat format);
     GraphicsPipelineBuilder& depth(VkFormat format, bool write, VkCompareOp compare);
     GraphicsPipelineBuilder& cullBack();
+    GraphicsPipelineBuilder& topology(VkPrimitiveTopology topology);
 
     VkPipeline build(VkDevice device, VkPipelineLayout layout) const;
 
@@ -46,6 +47,7 @@ struct GraphicsPipelineBuilder
     bool depthWrite_ = false;
     VkCompareOp depthCompare_ = VK_COMPARE_OP_ALWAYS;
     VkCullModeFlags cullMode_ = VK_CULL_MODE_NONE;
+    VkPrimitiveTopology topology_ = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 
 void setViewportYUp(VkCommandBuffer cmd, uint32_t width, uint32_t height);

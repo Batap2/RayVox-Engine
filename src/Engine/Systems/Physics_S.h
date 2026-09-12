@@ -13,6 +13,9 @@ struct Physics_S
 
     void fixedUpdate(World& world, float dt);
 
+    void drawColliders(World& world);
+    bool showColliders_ = false;
+
    private:
     void onRigidBodyDestroyed(entt::registry& reg, entt::entity e);
 };

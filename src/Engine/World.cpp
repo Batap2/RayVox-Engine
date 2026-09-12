@@ -80,6 +80,16 @@ InputManager& World::input()
     return *ctx_->inputManager_;
 }
 
+DebugDraw& World::debug()
+{
+    return ctx_->debug();
+}
+
+DebugDraw& World::debugOverlay()
+{
+    return ctx_->debugOverlay();
+}
+
 void World::resetScene()
 {
     auto& reg = registry_;

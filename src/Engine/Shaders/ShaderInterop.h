@@ -40,7 +40,9 @@ enum FrameSetBinding : uint
     PointLightsBinding = 2,
     MaterialsBinding = 3,
     SkyboxBinding = 4,
-    FrameSetBindingCount = 5,
+    DebugShapeVertsBinding = 5,
+    DebugShapesBinding = 6,
+    FrameSetBindingCount = 7,
 };
 
 static const uint InvalidGPUIndex = 0xFFFFFFFFu;
@@ -97,6 +99,19 @@ struct SkyboxGPUData
     float3 pad;
 };
 
+// One vertex of a unit wireframe, built once at startup. A debug shape is that
+// wireframe under a matrix, so nothing is tessellated per frame.
+struct DebugVertexGPUData
+{
+    float3 pos_; float pad_;
+};
+
+struct DebugShapeGPUData
+{
+    float4x4 world_;
+    float4 color_;
+};
+
 struct DrawPush
 {
     uint cameraIndex_;
@@ -113,6 +128,8 @@ static_assert(sizeof(PointLightGPUData) == 40);
 static_assert(sizeof(Material) == 48);
 static_assert(sizeof(SkyboxGPUData) == 224);
 static_assert(sizeof(DrawPush) == 16);
+static_assert(sizeof(DebugVertexGPUData) == 16);
+static_assert(sizeof(DebugShapeGPUData) == 80);
 
 static_assert(offsetof(CameraGPUData, pos_) == 128 && offsetof(CameraGPUData, znear_) == 140);
 static_assert(offsetof(SkyboxGPUData, color1) == 160);

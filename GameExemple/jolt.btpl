@@ -1,0 +1,226 @@
+{
+  "componentVersions": {
+    "camera": 1,
+    "freeCamController": 1,
+    "mesh": 1,
+    "rigidBody": 1,
+    "skybox": 1,
+    "transform": 1
+  },
+  "entities": [
+    {
+      "components": [
+        {
+          "color1": [
+            0.5,
+            0.7200000286102295,
+            0.8999999761581421
+          ],
+          "color2": [
+            0.800000011920929,
+            0.8799999952316284,
+            1.0
+          ],
+          "color3": [
+            0.25,
+            0.20000000298023224,
+            0.15000000596046448
+          ],
+          "hdri": null,
+          "horizonWidth": 0.15000000596046448,
+          "intensity": 0.36000001430511475,
+          "mode": 0,
+          "type": "skybox"
+        }
+      ],
+      "name": "Skybox",
+      "parent": null
+    },
+    {
+      "components": [
+        {
+          "mesh": "scenes\\Cornel\\assets\\3d\\cornel\\Torus.bmesh",
+          "type": "mesh"
+        },
+        {
+          "active": true,
+          "angularDamping": 0.05000000074505806,
+          "friction": 0.20000000298023224,
+          "gravityFactor": 1.0,
+          "halfExtents": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "halfHeight": 0.5,
+          "linearDamping": 0.05000000074505806,
+          "mass": 1.0,
+          "motion": 2,
+          "radius": 0.5,
+          "restitution": 0.0,
+          "shape": 1,
+          "type": "rigidBody"
+        },
+        {
+          "pos": [
+            0.0,
+            1.5499999523162842,
+            0.0
+          ],
+          "rot": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "type": "transform"
+        }
+      ],
+      "name": "torus",
+      "parent": null
+    },
+    {
+      "components": [
+        {
+          "mesh": "scenes\\Cornel\\assets\\3d\\cornel\\Cube.001.bmesh",
+          "type": "mesh"
+        },
+        {
+          "active": true,
+          "angularDamping": 0.05000000074505806,
+          "friction": 0.20000000298023224,
+          "gravityFactor": 1.0,
+          "halfExtents": [
+            1.0,
+            0.9900000095367432,
+            1.0099999904632568
+          ],
+          "halfHeight": 0.5,
+          "linearDamping": 0.05000000074505806,
+          "mass": 1.0,
+          "motion": 0,
+          "radius": 0.5,
+          "restitution": 0.0,
+          "shape": 0,
+          "type": "rigidBody"
+        },
+        {
+          "pos": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rot": [
+            0.0,
+            0.0,
+            0.10973431169986725,
+            0.993960976600647
+          ],
+          "scale": [
+            1.0,
+            0.07999999821186066,
+            1.0
+          ],
+          "type": "transform"
+        }
+      ],
+      "name": "Static Mesh",
+      "parent": null
+    },
+    {
+      "components": [
+        {
+          "mesh": "scenes\\Cornel\\assets\\3d\\cornel\\Cube.001.bmesh",
+          "type": "mesh"
+        },
+        {
+          "active": true,
+          "angularDamping": 0.05000000074505806,
+          "friction": 0.20000000298023224,
+          "gravityFactor": 1.0,
+          "halfExtents": [
+            1.0,
+            0.9900000095367432,
+            1.0099999904632568
+          ],
+          "halfHeight": 0.5,
+          "linearDamping": 0.05000000074505806,
+          "mass": 1.0,
+          "motion": 0,
+          "radius": 0.5,
+          "restitution": 0.0,
+          "shape": 0,
+          "type": "rigidBody"
+        },
+        {
+          "pos": [
+            -1.649999976158142,
+            -1.2000000476837158,
+            0.05000000074505806
+          ],
+          "rot": [
+            0.07793170213699341,
+            0.7058964967727661,
+            0.07725457102060318,
+            0.6997631788253784
+          ],
+          "scale": [
+            1.0,
+            0.07999999821186066,
+            1.0
+          ],
+          "type": "transform"
+        }
+      ],
+      "name": "Static Mesh",
+      "parent": null
+    },
+    {
+      "components": [
+        {
+          "active": true,
+          "fov": 1.0,
+          "type": "camera",
+          "zfar": 1000.0,
+          "znear": 0.10000000149011612
+        },
+        {
+          "boostSpeed": 17.15260124206543,
+          "controlled": true,
+          "mouseSensitivity": 0.0024999999441206455,
+          "moveSpeed": 5.717533588409424,
+          "pitch": -0.3974997401237488,
+          "requireRightMouseButton": true,
+          "type": "freeCamController",
+          "yaw": -0.8149994015693665
+        },
+        {
+          "pos": [
+            -5.375434398651123,
+            2.957967519760132,
+            3.554626226425171
+          ],
+          "rot": [
+            -0.18127618730068207,
+            -0.3885132372379303,
+            -0.07825000584125519,
+            0.9000408053398132
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "type": "transform"
+        }
+      ],
+      "name": "Camera",
+      "parent": null
+    }
+  ]
+}

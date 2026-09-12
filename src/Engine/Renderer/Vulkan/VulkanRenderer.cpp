@@ -211,6 +211,12 @@ ScenePasses* Renderer::scenePasses()
     return scenePasses_.get();
 }
 
+void Renderer::uploadDebugDraw(const DebugDraw& depthTested, const DebugDraw& overlay)
+{
+    if (scenePasses_)
+        scenePasses_->uploadDebugDraw(depthTested, overlay);
+}
+
 void Renderer::setSceneRecord(SceneRecordFn fn)
 {
     sceneRecord_ = std::move(fn);

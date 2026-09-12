@@ -11,6 +11,7 @@
 #include "Components/RigidBody_C.h"
 #include "Components/Transform_C.h"
 #include "Physics/JoltConvert.h"
+#include "Renderer/DebugDraw.h"
 #include "Systems/Systems.h"
 #include "Systems/Transform_S.h"
 #include "World.h"
@@ -80,6 +81,22 @@ JPH::ShapeRefC makeShape(const RigidBody_C& rb, const v3f& scale)
     return new JPH::ScaledShape(base, base->MakeScaleValid(s));
 }
 
+const col3& colorOf(const RigidBody_C& rb)
+{
+    if (!rb.active_)
+        return colors::grey;
+    switch (rb.motion_)
+    {
+        case RigidBody_C::Motion::Static:
+            return colors::green;
+        case RigidBody_C::Motion::Kinematic:
+            return colors::blue;
+        case RigidBody_C::Motion::Dynamic:
+            break;
+    }
+    return colors::cyan;
+}
+
 void destroyBody(JPH::BodyInterface& bi, RigidBody_C& rb)
 {
     if (rb.bodyId_ == kInvalidBodyId)
@@ -123,6 +140,36 @@ void Physics_S::onRigidBodyDestroyed(entt::registry& reg, entt::entity e)
         return;
 
     destroyBody((*world)->physics().bodies(), reg.get<RigidBody_C>(e));
+}
+
+void Physics_S::drawColliders(World& world)
+{
+    if (!showColliders_)
+        return;
+
+    DebugDraw& dbg = world.debugOverlay();
+    for (auto [e, rb, tc] : world.registry_.view<RigidBody_C, Transform_C>().each())
+    {
+        const transform xform = TRS_Transform(tc.pos(), tc.rot(), v3f::Ones());
+        const v3f scale = tc.scale().cwiseAbs();
+        const col3& color = colorOf(rb);
+
+        switch (rb.shape_)
+        {
+            case RigidBody_C::Shape::Box:
+                dbg.box(xform, rb.halfExtents_.cwiseProduct(scale), color);
+                break;
+            case RigidBody_C::Shape::Sphere:
+                // Jolt only accepts a uniform scale on a sphere and a uniform
+                // X/Z one on a capsule (MakeScaleValid); the wire reproduces that
+                dbg.sphere(xform, rb.radius_ * scale.sum() / 3.f, color);
+                break;
+            case RigidBody_C::Shape::Capsule:
+                dbg.capsule(xform, rb.halfHeight_ * scale.y(),
+                            rb.radius_ * (scale.x() + scale.z()) * 0.5f, color);
+                break;
+        }
+    }
 }
 
 void Physics_S::fixedUpdate(World& world, float dt)

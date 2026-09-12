@@ -92,6 +92,88 @@ Décisions actées :
 - [ ] `fixedLateUpdate` seulement si un cas concret le réclame (Unity n'en a
       pas ; les contacts passent par les listeners Jolt).
 
+## 1bis. Debug draw (chantier courant)
+
+Décision actée : **pas de lib externe**. debug-draw (glampert) couvre les
+bonnes primitives mais aplatit tout en segments côté CPU, à chaque appel et à
+chaque frame, dans des tableaux de taille fixe — quelques centaines de
+colliders saturent `DEBUG_DRAW_MAX_LINES`. Et elle n'économise pas le travail
+Vulkan : son `RenderInterface` est exactement la pass qu'il faut écrire de
+toute façon. Le gain visé est CPU et bande passante, pas GPU : le vertex
+shader traite autant de sommets dans les deux cas.
+
+Le principe : **presque toute primitive de debug est une forme unitaire sous
+une matrice**. Les wireframes unitaires sont construits une fois au démarrage,
+chaque appel n'écrit qu'un `(mat4, couleur)` — O(1) par primitive au lieu de
+O(segments). Un cube unitaire sert déjà de box, et servira d'AABB, d'OBB et de
+frustum (le cube sous l'inverse de la view-projection).
+
+- [x] **1. Pass de lignes + collecte** — fait : `Renderer/DebugDraw` ne
+      connaît ni Vulkan ni l'ECS (v3f, m4f, col3 seulement), possédé par
+      `Engine`, atteint par `world.debug()` — pas de singleton, la lib moteur
+      est liée à la fois dans l'éditeur et dans `Game.dll`. Deux seaux : les
+      formes instanciées et les segments bruts. Les deux pipelines n'ont
+      **aucun vertex input** : géométrie et instances sont lues en
+      `StructuredBuffer` via `SV_VertexID` / `SV_InstanceID`, ce qui a évité
+      de toucher aux vertex input rates. Profondeur testée, jamais écrite, et
+      tracé **après le ciel** (qui n'écrit pas de profondeur et repeindrait
+      par-dessus les fils sur le fond). `GraphicsPipelineBuilder` gagne un
+      `.topology()`. L'upload passe par `requestUpload` pendant `Engine::endFrame`, le
+      `flushUploads` de `render()` fait la copie dans la même frame — même
+      contrat que les pools d'instances. Validé à l'image : cube unitaire jaune,
+      boîte (0.5, 2, 0.5) cyan décalée, et les trois axes RGB, correctement
+      occultés par le sol.
+- [x] **2. Le reste des formes** — fait : sphere, capsule, aabb, frustum,
+      arrow, axes, durées et calque overlay.
+      Trois points non évidents :
+      **la capsule est en trois morceaux** (deux dômes + les arêtes du
+      cylindre) parce qu'elle a deux dimensions indépendantes : un seul scale
+      non uniforme écraserait ses calottes en ellipsoïdes. Le dôme du bas est
+      le même, miroité en Y. Ça reste O(1) — trois matrices, aucune
+      tessellation.
+      **Le frustum est le cube unitaire sous une matrice projective**, pas
+      affine : le VS divise donc par w. Pour toutes les autres formes w vaut 1
+      et la division ne coûte rien. Le cube couvre [-1, 1] alors que le z de
+      clip Vulkan va de 0 à 1, d'où un remap de demi-profondeur avant
+      l'inverse de la view-projection.
+      **Les durées tiennent dans une seule liste** : chaque entrée porte une
+      date d'expiration, celles de la frame courante expirent immédiatement.
+      `endFrame(dt)` avance l'horloge et purge — un seul balayage, pas de
+      seconde liste.
+      L'overlay est un second `DebugDraw` (`world.debugOverlay()`) plutôt
+      qu'un drapeau par appel : rien de collant d'une feature à l'autre, et
+      les sites d'appel restent courts. Ses pipelines ne diffèrent que par un
+      `VK_COMPARE_OP_ALWAYS`.
+      Validé à l'image : les six primitives dessinées ensemble, la sphère
+      overlay visible **à travers** la boîte, le frustum correctement évasé
+      (donc la division par w opère), et une ligne émise une seule fois à la
+      frame 20 toujours vivante à la frame 60.
+      **Puis unifié : une ligne est une forme.** Le seau « segments bruts »
+      n'avait pas lieu d'être — je le croyais nécessaire parce qu'une ligne
+      sous matrice semblait exiger une base orthonormée, or la ligne unitaire
+      est sur +X avec y = z = 0, donc les deux colonnes du milieu ne sont
+      jamais lues : `[b-a | 0 | 0 | a]` suffit, sans normalisation ni cas
+      dégénéré. Coût : 32 octets de plus par ligne, sur le seau à faible
+      volume. Gain : un shader, deux pipelines sur quatre, un buffer, un
+      binding du frame set (8 → 7), la moitié de l'upload et une liste
+      parallèle de moins pour les durées. Même rendu après unification.
+- [x] **3. Hitboxes** — fait : `Physics_S::drawColliders`, appelé depuis
+      `Systems::update` (donc dans les deux `World::update`), piloté par les
+      composants et jamais par les corps Jolt — en mode édition la simulation
+      ne tourne pas et aucun corps n'existe. Couleur par motion : vert
+      statique, bleu kinematic, cyan dynamic, gris si `active_` est faux.
+      Toggle **View > Colliders** dans l'éditeur (`showColliders_`).
+      Deux points de fidélité qui ne vont pas de soi : le fil est construit
+      sur la pose **locale**, comme le corps — dessiner la pose monde
+      mettrait le collider là où Jolt ne l'a pas mis ; et le scale reproduit
+      `MakeScaleValid` (sphère uniformisée par la moyenne des trois axes,
+      capsule uniformisée en X/Z), sinon on afficherait un ellipsoïde là où
+      Jolt simule une sphère.
+      Validé à l'image sans `Game` donc sans `fixedUpdate` : les cinq
+      colliders visibles avec leurs couleurs, la capsule et la sphère
+      correctes, et la boîte scalée (2, 1, 2) visiblement plus large que
+      haute.
+
 ## 2. Structures d'accélération (rendu)
 
 Le partage est réglé par le §1 : Jolt possède la seule structure CPU et ne

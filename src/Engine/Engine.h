@@ -12,6 +12,7 @@ namespace batap
 struct Renderer;
 struct InputManager;
 struct AssetManager;
+struct DebugDraw;
 struct Engine;
 
 struct WindowDesc
@@ -56,9 +57,14 @@ struct Engine
     v2i getFrameSize();
     uint32_t getFrameindex();
 
+    DebugDraw& debug() { return *debugDraw_; }
+    DebugDraw& debugOverlay() { return *debugOverlay_; }
+
     std::unique_ptr<Renderer> renderer_;
     std::unique_ptr<InputManager> inputManager_;
     std::unique_ptr<AssetManager> assetManager_;
+    std::unique_ptr<DebugDraw> debugDraw_;
+    std::unique_ptr<DebugDraw> debugOverlay_;
 
     float deltaTime_ = 0;
 

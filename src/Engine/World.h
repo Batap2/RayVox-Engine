@@ -18,6 +18,7 @@ struct EntityFactory;
 struct AssetManager;
 struct Spawnable;
 struct Game;
+struct DebugDraw;
 struct InputManager;
 struct PhysicsWorld;
 
@@ -38,6 +39,8 @@ struct World
     void update(Game& game);
 
     InputManager& input();
+    DebugDraw& debug();
+    DebugDraw& debugOverlay();
     SceneRenderArgs renderArgs();
     bool loadScene(const std::string& path);
 

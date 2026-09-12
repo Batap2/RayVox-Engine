@@ -7,6 +7,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstring>
+#include <span>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -18,10 +21,81 @@
 #include "Components/Transform_C.h"
 #include "Instance/InstanceManager.h"
 #include "Paths.h"
+#include "Renderer/DebugDraw.h"
 #include "Shaders/ShaderInterop.h"
 
 namespace batap
 {
+namespace
+{
+
+constexpr uint32_t kMaxDebugShapes = 65536;
+
+// Unit wireframes, built once. A box is the [-1, 1] cube, so its matrix
+// carries the half extents.
+constexpr std::array<std::array<float, 3>, 8> kBoxCorners = {{{-1, -1, -1},
+                                                             {1, -1, -1},
+                                                             {1, 1, -1},
+                                                             {-1, 1, -1},
+                                                             {-1, -1, 1},
+                                                             {1, -1, 1},
+                                                             {1, 1, 1},
+                                                             {-1, 1, 1}}};
+constexpr std::array<uint32_t, 24> kBoxEdges = {0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6,
+                                                6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7};
+
+constexpr uint32_t kRingSegments = 32;
+
+void writeVertex(DebugVertexGPUData& out, float x, float y, float z)
+{
+    out.pos_[0] = x;
+    out.pos_[1] = y;
+    out.pos_[2] = z;
+    out.pad_ = 0.f;
+}
+
+void writeVertex(DebugVertexGPUData& out, const std::array<float, 3>& p)
+{
+    writeVertex(out, p[0], p[1], p[2]);
+}
+
+// axis 0/1/2 says which coordinate stays at zero, so the three calls give the
+// YZ, XZ and XY great circles.
+void appendArc(std::vector<DebugVertexGPUData>& verts, uint32_t axis, float fromRadians,
+               float toRadians, uint32_t segments)
+{
+    auto at = [&](float angle)
+    {
+        const float c = std::cos(angle);
+        const float sn = std::sin(angle);
+        switch (axis)
+        {
+            case 0:
+                return std::array<float, 3>{0.f, c, sn};
+            case 1:
+                return std::array<float, 3>{c, 0.f, sn};
+            default:
+                return std::array<float, 3>{c, sn, 0.f};
+        }
+    };
+
+    const float step = (toRadians - fromRadians) / static_cast<float>(segments);
+    for (uint32_t i = 0; i < segments; ++i)
+    {
+        writeVertex(verts.emplace_back(), at(fromRadians + step * static_cast<float>(i)));
+        writeVertex(verts.emplace_back(), at(fromRadians + step * static_cast<float>(i + 1)));
+    }
+}
+
+void writeColor(float (&out)[4], const col3& c)
+{
+    out[0] = c.x();
+    out[1] = c.y();
+    out[2] = c.z();
+    out[3] = 1.f;
+}
+
+}  // namespace
 
 ScenePasses::ScenePasses(VulkanContext& ctx, ResourceManager& resources, VkFormat colorFormat,
                          VkFormat depthFormat)
@@ -87,16 +161,26 @@ ScenePasses::ScenePasses(VulkanContext& ctx, ResourceManager& resources, VkForma
     const ShaderModule ps{ctx_.device_, shaderDir + "/PixelShader.spv"};
     const ShaderModule skyVS{ctx_.device_, shaderDir + "/SkyVS.spv"};
     const ShaderModule skyPS{ctx_.device_, shaderDir + "/SkyPS.spv"};
-    buildPipelines(vs, ps, skyVS, skyPS);
+    const ShaderModule debugVS{ctx_.device_, shaderDir + "/DebugShapeVS.spv"};
+    const ShaderModule debugPS{ctx_.device_, shaderDir + "/DebugPS.spv"};
+    buildPipelines(vs, ps, skyVS, skyPS, debugVS, debugPS);
+
+    debugShapesBuffer_ = resources_.createPerFrameBuffer(
+        sizeof(DebugShapeGPUData) * kMaxDebugShapes, "debugShapes");
+    buildDebugGeometry();
 }
 
 void ScenePasses::buildPipelines(VkShaderModule vs, VkShaderModule ps, VkShaderModule skyVS,
-                                 VkShaderModule skyPS)
+                                 VkShaderModule skyPS, VkShaderModule debugVS,
+                                 VkShaderModule debugPS)
 {
     if (geometryPipeline_)
         vkDestroyPipeline(ctx_.device_, geometryPipeline_, nullptr);
     if (skyPipeline_)
         vkDestroyPipeline(ctx_.device_, skyPipeline_, nullptr);
+    for (DebugLayer& layer : debugLayers_)
+        if (layer.pipeline_)
+            vkDestroyPipeline(ctx_.device_, layer.pipeline_, nullptr);
 
     geometryPipeline_ = GraphicsPipelineBuilder()
                             .shaders(vs, ps)
@@ -116,6 +200,20 @@ void ScenePasses::buildPipelines(VkShaderModule vs, VkShaderModule ps, VkShaderM
                        .colorFormat(colorFormat_)
                        .depth(depthFormat_, false, VK_COMPARE_OP_LESS_OR_EQUAL)
                        .build(ctx_.device_, pipelineLayout_);
+
+    // No vertex input at all: geometry and instances are read from storage
+    // buffers, indexed by SV_VertexID / SV_InstanceID. Depth is never written,
+    // so wires cannot occlude the scene; the overlay layer skips the test.
+    for (size_t i = 0; i < DebugLayerCount; ++i)
+    {
+        const VkCompareOp compare = i == 0 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_ALWAYS;
+        debugLayers_[i].pipeline_ = GraphicsPipelineBuilder()
+                                        .shaders(debugVS, debugPS)
+                                        .topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
+                                        .colorFormat(colorFormat_)
+                                        .depth(depthFormat_, false, compare)
+                                        .build(ctx_.device_, pipelineLayout_);
+    }
 }
 
 void ScenePasses::checkHotReload()
@@ -130,11 +228,13 @@ void ScenePasses::checkHotReload()
         const char* file;
         const char* target;
     };
-    static constexpr std::array<Stage, 4> stages = {{
+    static constexpr std::array<Stage, 6> stages = {{
         {"VertexShader.hlsl", "vs_6_6"},
         {"PixelShader.hlsl", "ps_6_6"},
         {"SkyVS.hlsl", "vs_6_6"},
         {"SkyPS.hlsl", "ps_6_6"},
+        {"DebugShapeVS.hlsl", "vs_6_6"},
+        {"DebugPS.hlsl", "ps_6_6"},
     }};
 
     // Tout le dossier : un header partagé déclenche le reload comme une source.
@@ -154,7 +254,7 @@ void ScenePasses::checkHotReload()
     shadersMtime_ = latest;  // même en cas d'échec : on retentera à la
                              // prochaine sauvegarde, pas à chaque check
 
-    std::array<std::vector<uint8_t>, 4> spirv;
+    std::array<std::vector<uint8_t>, stages.size()> spirv;
     for (size_t i = 0; i < stages.size(); ++i)
     {
         spirv[i] =
@@ -172,7 +272,9 @@ void ScenePasses::checkHotReload()
     const ShaderModule ps{ctx_.device_, spirv[1].data(), spirv[1].size()};
     const ShaderModule skyVS{ctx_.device_, spirv[2].data(), spirv[2].size()};
     const ShaderModule skyPS{ctx_.device_, spirv[3].data(), spirv[3].size()};
-    buildPipelines(vs, ps, skyVS, skyPS);
+    const ShaderModule debugVS{ctx_.device_, spirv[4].data(), spirv[4].size()};
+    const ShaderModule debugPS{ctx_.device_, spirv[5].data(), spirv[5].size()};
+    buildPipelines(vs, ps, skyVS, skyPS, debugVS, debugPS);
     std::cout << "[ShaderCompiler] shaders reloaded" << std::endl;
 }
 
@@ -180,6 +282,10 @@ ScenePasses::~ScenePasses()
 {
     vkDestroyPipeline(ctx_.device_, geometryPipeline_, nullptr);
     vkDestroyPipeline(ctx_.device_, skyPipeline_, nullptr);
+    for (DebugLayer& layer : debugLayers_)
+        vkDestroyPipeline(ctx_.device_, layer.pipeline_, nullptr);
+    resources_.requestDestroy(debugVertsBuffer_);
+    resources_.requestDestroy(debugShapesBuffer_);
     vkDestroyPipelineLayout(ctx_.device_, pipelineLayout_, nullptr);
     vkDestroyDescriptorPool(ctx_.device_, framePool_, nullptr);
     vkDestroyDescriptorSetLayout(ctx_.device_, frameSetLayout_, nullptr);
@@ -198,6 +304,8 @@ void ScenePasses::writeFrameSet(uint32_t frame, const SceneRenderArgs& args, Eng
         });
     buffers[MaterialsBinding] =
         resources_.bufferFor(ctx.assetManager_->getGPUArena<Material>()->bufferHandle());
+    buffers[DebugShapeVertsBinding] = resources_.bufferFor(debugVertsBuffer_);
+    buffers[DebugShapesBinding] = resources_.bufferFor(debugShapesBuffer_);
 
     std::array<VkDescriptorBufferInfo, FrameSetBindingCount> bufferInfos{};
     std::array<VkWriteDescriptorSet, FrameSetBindingCount> writes{};
@@ -214,6 +322,116 @@ void ScenePasses::writeFrameSet(uint32_t frame, const SceneRenderArgs& args, Eng
         writes[i].pBufferInfo = &bufferInfos[i];
     }
     vkUpdateDescriptorSets(ctx_.device_, FrameSetBindingCount, writes.data(), 0, nullptr);
+}
+
+void ScenePasses::buildDebugGeometry()
+{
+    constexpr float kPi = 3.14159265358979f;
+    std::vector<DebugVertexGPUData> verts;
+
+    auto begin = [&](DebugDraw::Shape shape) -> DebugShapeGeometry&
+    {
+        DebugShapeGeometry& geom = debugGeometry_[static_cast<size_t>(shape)];
+        geom.firstVertex_ = static_cast<uint32_t>(verts.size());
+        return geom;
+    };
+    auto end = [&](DebugShapeGeometry& geom)
+    { geom.vertexCount_ = static_cast<uint32_t>(verts.size()) - geom.firstVertex_; };
+
+    DebugShapeGeometry& line = begin(DebugDraw::Shape::Line);
+    writeVertex(verts.emplace_back(), 0.f, 0.f, 0.f);
+    writeVertex(verts.emplace_back(), 1.f, 0.f, 0.f);
+    end(line);
+
+    DebugShapeGeometry& box = begin(DebugDraw::Shape::Box);
+    for (uint32_t index : kBoxEdges)
+        writeVertex(verts.emplace_back(), kBoxCorners[index]);
+    end(box);
+
+    DebugShapeGeometry& sphere = begin(DebugDraw::Shape::Sphere);
+    for (uint32_t axis = 0; axis < 3; ++axis)
+        appendArc(verts, axis, 0.f, 2.f * kPi, kRingSegments);
+    end(sphere);
+
+    // Dome pointing +Y: the equator, then two meridians.
+    DebugShapeGeometry& hemisphere = begin(DebugDraw::Shape::Hemisphere);
+    appendArc(verts, 1, 0.f, 2.f * kPi, kRingSegments);
+    appendArc(verts, 0, 0.f, kPi, kRingSegments / 2);
+    appendArc(verts, 2, 0.f, kPi, kRingSegments / 2);
+    end(hemisphere);
+
+    DebugShapeGeometry& cylinder = begin(DebugDraw::Shape::CylinderSide);
+    for (const auto& xz : {std::array<float, 2>{1.f, 0.f}, std::array<float, 2>{-1.f, 0.f},
+                           std::array<float, 2>{0.f, 1.f}, std::array<float, 2>{0.f, -1.f}})
+    {
+        writeVertex(verts.emplace_back(), xz[0], -1.f, xz[1]);
+        writeVertex(verts.emplace_back(), xz[0], 1.f, xz[1]);
+    }
+    end(cylinder);
+
+    const uint64_t bytes = sizeof(DebugVertexGPUData) * verts.size();
+    debugVertsBuffer_ = resources_.createStaticBuffer(bytes, "debugShapeVerts");
+    std::span<std::byte> staging = resources_.requestUpload(debugVertsBuffer_, bytes);
+    std::memcpy(staging.data(), verts.data(), bytes);
+}
+
+void ScenePasses::uploadDebugDraw(const DebugDraw& depthTested, const DebugDraw& overlay)
+{
+    const std::array<const DebugDraw*, DebugLayerCount> sources{&depthTested, &overlay};
+    std::vector<DebugShapeGPUData> shapes;
+
+    for (size_t i = 0; i < DebugLayerCount; ++i)
+    {
+        DebugLayer& layer = debugLayers_[i];
+        for (size_t kind = 0; kind < DebugDraw::ShapeCount; ++kind)
+        {
+            const auto& records = sources[i]->shapes(static_cast<DebugDraw::Shape>(kind));
+            const size_t room = kMaxDebugShapes - shapes.size();
+
+            layer.shapes_[kind].firstInstance_ = static_cast<uint32_t>(shapes.size());
+            layer.shapes_[kind].instanceCount_ =
+                static_cast<uint32_t>(std::min(records.size(), room));
+
+            for (uint32_t r = 0; r < layer.shapes_[kind].instanceCount_; ++r)
+            {
+                DebugShapeGPUData& out = shapes.emplace_back();
+                std::memcpy(out.world_, records[r].world_.data(), sizeof(out.world_));
+                writeColor(out.color_, records[r].color_);
+            }
+        }
+    }
+
+    if (shapes.empty())
+        return;
+
+    const uint64_t bytes = sizeof(DebugShapeGPUData) * shapes.size();
+    std::memcpy(resources_.requestUpload(debugShapesBuffer_, bytes).data(), shapes.data(), bytes);
+}
+
+void ScenePasses::recordDebug(VkCommandBuffer cmd, DrawPush push)
+{
+    for (const DebugLayer& layer : debugLayers_)
+    {
+        bool bound = false;
+        for (size_t kind = 0; kind < DebugDraw::ShapeCount; ++kind)
+        {
+            const DebugDrawRange& range = layer.shapes_[kind];
+            if (range.instanceCount_ == 0)
+                continue;
+
+            if (!bound)
+            {
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layer.pipeline_);
+                bound = true;
+            }
+            push.instanceIndex_ = range.firstInstance_;
+            vkCmdPushConstants(cmd, pipelineLayout_,
+                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                               sizeof(push), &push);
+            vkCmdDraw(cmd, debugGeometry_[kind].vertexCount_, range.instanceCount_,
+                      debugGeometry_[kind].firstVertex_, 0);
+        }
+    }
 }
 
 void ScenePasses::record(VkCommandBuffer cmd, uint32_t frame, uint32_t width, uint32_t height,
@@ -310,15 +528,19 @@ void ScenePasses::record(VkCommandBuffer cmd, uint32_t frame, uint32_t width, ui
     // ---- Sky (plein écran, derrière la scène) ----
     bool hasSkybox = false;
     reg->view<Skybox_C>().each([&](entt::entity, Skybox_C&) { hasSkybox = true; });
-    if (!hasSkybox)
-        return;
+    if (hasSkybox)
+    {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyPipeline_);
+        push.instanceIndex_ = 0;
+        vkCmdPushConstants(cmd, pipelineLayout_,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(push), &push);
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+    }
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyPipeline_);
-    push.instanceIndex_ = 0;
-    vkCmdPushConstants(cmd, pipelineLayout_,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push),
-                       &push);
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    // After the sky: it writes no depth, so it would paint over any wire drawn
+    // against the background.
+    recordDebug(cmd, push);
 }
 
 }  // namespace batap

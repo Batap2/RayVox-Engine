@@ -309,10 +309,15 @@ struct FrameSetBindings<TypeList<Instances...>>
 {
     static_assert((GPUInstance<Instances> && ...));
 
-    static constexpr uint32_t claimed =
-        ((1u << Instances::Binding) | ...) | (1u << MaterialsBinding);
+    // Written outside the pools: the material arena, and the debug draw
+    // buffers that ScenePasses owns.
+    static constexpr uint32_t nonPool = (1u << MaterialsBinding) |
+                                        (1u << DebugShapeVertsBinding) |
+                                        (1u << DebugShapesBinding);
 
-    static_assert(std::popcount(claimed) == sizeof...(Instances) + 1,
+    static constexpr uint32_t claimed = ((1u << Instances::Binding) | ...) | nonPool;
+
+    static_assert(std::popcount(claimed) == sizeof...(Instances) + std::popcount(nonPool),
                   "two instances claim the same frame set binding");
     static_assert(claimed == (1u << FrameSetBindingCount) - 1u,
                   "a frame set binding has no instance pool behind it");

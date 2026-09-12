@@ -1,5 +1,7 @@
 #include "Engine.h"
 
+#include "Renderer/DebugDraw.h"
+
 #include "Assets/AssetLoader.h"
 #include "Assets/AssetManager.h"
 #include "InputManager.h"
@@ -42,6 +44,8 @@ Engine::Engine(const WindowDesc& desc) : title_(desc.title), fpsInTitle_(desc.fp
 
     renderer_ = std::make_unique<Renderer>(window_, desc.transparent);
     assetManager_ = std::make_unique<AssetManager>(renderer_->resourceManager_);
+    debugDraw_ = std::make_unique<DebugDraw>();
+    debugOverlay_ = std::make_unique<DebugDraw>();
     createDefaultAssets(*this);
 
     // `--project <dir>` is how dev launch configs point a build-tree exe at
@@ -99,6 +103,9 @@ void Engine::beginFrame()
 void Engine::endFrame()
 {
     inputManager_->ClearFrameState();
+    renderer_->uploadDebugDraw(*debugDraw_, *debugOverlay_);
+    debugDraw_->endFrame(deltaTime_);
+    debugOverlay_->endFrame(deltaTime_);
     renderer_->render();
 }
 
