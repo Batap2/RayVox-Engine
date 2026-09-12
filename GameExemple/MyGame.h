@@ -21,7 +21,6 @@ struct MyGame : Game
                 (t->rot() * angleaxisf(rot.speed_ * dt, v3f::UnitZ())).normalized();
             h.setLocalRotation(q);
         }
-        world.spawn("mesh");
     }
 };
 }  // namespace batap

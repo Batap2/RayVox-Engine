@@ -42,18 +42,53 @@ Décisions actées :
       `-Weverything -Werror` refuse ses headers. Validé par instrumentation
       temporaire du ctor de `World` : sphère au repos à y=0.48 après 120 steps,
       2 corps → 0 après `resetScene()`.
-- [ ] **3. Composants** — `RigidBody_C` (motion type, masse, friction...) et
-      `Collider_C` (forme primitive + dimensions), plats, `BATAP_COMPONENT`.
-      Le `BodyID` (uint32) est de l'état runtime : membre **non réfléchi**,
-      jamais dans un `.btpl`.
-- [ ] **4. Sync ECS ↔ Jolt** — un système hôte : corps créés à l'apparition
-      du composant (hooks entt, comme les pools GPU), transforms kinematic
-      poussés vers Jolt, step à `fixedDt_`, read-back des dynamic via
-      `setLocalPosition/Rotation` (le markDirty suit tout seul).
-- [ ] **5. Interpolation du rendu** entre les deux derniers états fixes —
-      sans elle, saccade dès que `fixedDt_` est plus lent que le framerate.
-- [ ] **6. Requêtes** — `world.raycast(...)`, `world.overlapSphere(...)` →
-      Jolt, filtrage par layers.
+- [x] **3. Composants** — fait : **un seul** composant `RigidBody_C`, plat et
+      trivial, `BATAP_COMPONENT`. Il porte la forme (Box/Sphere/Capsule +
+      dimensions) *et* la dynamique (motion, masse, friction, restitution,
+      damping, gravityFactor). Pas de `Collider_C` séparé : `motion_ = Static`
+      **est** le « collider seul » — solide et requêtable, jamais bougé par la
+      simulation. Un composant unique supprime les combinaisons muettes
+      (un rigidbody sans forme ne faisait rien) et la question de qui possède
+      le `bodyId_`.
+      `bodyId_` (uint32) et `shapeScale_` sont de l'état runtime : sortis de
+      la réflexion par `fieldSkip<>()`, ajouté à `ComponentRegistry` — ni
+      `.btpl`, ni inspecteur, ni snapshot de hot reload.
+      Reste rêche : un enum réfléchi s'édite au DragScalar (pas de combo) —
+      un `FieldType` générique pour les enums via magic_enum réglerait ça
+      pour tous les composants.
+- [x] **4. Sync ECS ↔ Jolt** — fait : `Systems/Physics_S`, hôte, appelé dans
+      la boucle fixe de `World::update(Game&)` (donc pas en mode édition).
+      Un seul passage par step sur `view<RigidBody_C, Transform_C>` :
+      création/destruction des corps pour coller aux composants, mise à jour
+      de forme et de motion type, push des kinematic (`MoveKinematic`) et des
+      statiques (`SetPositionAndRotationWhenChanged`), `step(fixedDt_)`, puis
+      read-back des dynamic éveillés via `setLocalPosition/Rotation`.
+      La création est **paresseuse** (corps créé au premier step où
+      `RigidBody_C + Transform_C + active_` sont là) plutôt que sur
+      `on_construct` : l'ordre d'ajout des composants ne compte pas, et le
+      balayage est de toute façon nécessaire pour les kinematic. Seul
+      `on_destroy<RigidBody_C>` est un hook — c'est le dernier moment où le
+      `bodyId_` est lisible. `active_ = false` détruit le corps, `true` le
+      recrée.
+      Le scale du transform est pris en compte : forme enveloppée dans un
+      `ScaledShape`, refaite (`SetShape`) quand le scale change en jeu.
+      `MakeScaleValid` ramène au plus proche scale que la forme accepte —
+      une sphère n'a qu'un scale uniforme, une capsule qu'un X/Z uniforme —
+      au lieu de laisser Jolt asserter, scale nul compris.
+      Piège Jolt : un corps créé Static n'a pas de `MotionProperties`, donc
+      `SetMotionType` ne peut pas l'en sortir (crash). Traverser la frontière
+      Static coûte un corps neuf ; Kinematic ↔ Dynamic passe par
+      `SetMotionType` et garde la vitesse.
+      Limites v1 assumées : la pose du corps est la pose **locale**, un corps
+      sur une entité parentée dériverait ; et déplacer un corps Static ne
+      réveille pas les corps endormis posés dessus (comportement Jolt — pour
+      de la géométrie mobile, c'est Kinematic qu'il faut).
+      Validé sur `GameExemple` par un harnais temporaire (retiré) pilotant des
+      steps fixes : 4 corps, bille au repos sur un sol Static à 1.000, sphère
+      ×2 à 1.480, corps `active_=false` jamais simulé (5.000 inchangé),
+      kinematic suivi par Jolt à l'identique (3.995 / 3.995), `active_` off→on
+      qui détruit puis recrée, Kinematic→Dynamic et Static→Dynamic→Static sans
+      crash, `registry.destroy` qui détruit via le hook, `resetScene()` à 0.
 - [ ] `fixedLateUpdate` seulement si un cas concret le réclame (Unity n'en a
       pas ; les contacts passent par les listeners Jolt).
 

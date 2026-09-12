@@ -2,6 +2,7 @@
 
 #include "Engine.h"
 #include "FreeCamController_S.h"
+#include "Physics_S.h"
 #include "Transform_S.h"
 #include "World.h"
 
@@ -22,5 +23,6 @@ Systems::Systems()
 {
     freecam_ = std::make_unique<FreeCamController_S>();
     transforms_ = std::make_unique<Transform_S>();
+    physics_ = std::make_unique<Physics_S>();
 }
 }  // namespace batap

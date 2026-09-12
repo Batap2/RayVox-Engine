@@ -15,6 +15,7 @@
 #include "Renderer/Renderer.h"
 #include "Renderer/SceneBinding.h"
 #include "Serialization/EntitySerializer.h"
+#include "Systems/Physics_S.h"
 #include "Systems/Systems.h"
 #include "Systems/Transform_S.h"
 
@@ -29,6 +30,7 @@ World::World(Engine& ctx) : ctx_(&ctx)
 
     registry_.ctx().emplace<World*>(this);
     instanceManager_->connectHooks(registry_);
+    systems_->physics_->connectHooks(registry_);
 
     // refresh camera ratio on window resize
     ctx.renderer_->onResize(
@@ -62,6 +64,7 @@ void World::update(Game& game)
     while (time_.accumulator_ >= time_.fixedDt_)
     {
         game.fixedUpdate(*this, time_.fixedDt_);
+        systems_->physics_->fixedUpdate(*this, time_.fixedDt_);
         time_.accumulator_ -= time_.fixedDt_;
     }
 
@@ -96,6 +99,7 @@ void World::resetScene()
     reg = entt::registry{};
     reg.ctx().emplace<World*>(this);
     instanceManager_->connectHooks(reg);
+    systems_->physics_->connectHooks(reg);
 
     physics_->clear();
 }

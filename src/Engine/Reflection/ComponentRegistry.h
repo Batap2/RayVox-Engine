@@ -210,6 +210,20 @@ FieldOverride fieldMeta(FieldMeta m)
     return {detail::memberOffset<Member>(), m};
 }
 
+// Hides a member from the registry: runtime state (a physics body id, a
+// cache) that must never reach a .btpl nor the inspector, and would be stale
+// anyway after a hot reload.
+struct FieldSkip
+{
+    size_t offset = 0;
+};
+
+template <auto Member>
+FieldSkip fieldSkip()
+{
+    return {detail::memberOffset<Member>()};
+}
+
 // --- manual registration (non-aggregates) --------------------------------
 
 // One field of a component the aggregate reflection cannot read (Transform_C,
@@ -255,15 +269,19 @@ bool registerComponent(std::string_view name, Extra&&... extra)
 
     // extras come in any order: one optional ComponentMeta + field overrides
     std::vector<FieldOverride> overrides;
+    std::vector<FieldSkip> skips;
     auto consume = [&](auto&& item)
     {
         using I = std::decay_t<decltype(item)>;
         if constexpr (std::is_same_v<I, ComponentMeta>)
             t.meta = item;
+        else if constexpr (std::is_same_v<I, FieldSkip>)
+            skips.push_back(item);
         else
         {
             static_assert(std::is_same_v<I, FieldOverride>,
-                          "BATAP_COMPONENT extras must be ComponentMeta or fieldMeta<...>()");
+                          "BATAP_COMPONENT extras must be ComponentMeta, fieldMeta<...>() or "
+                          "fieldSkip<...>()");
             overrides.push_back(item);
         }
     };
@@ -287,6 +305,9 @@ bool registerComponent(std::string_view name, Extra&&... extra)
         for (auto& f : t.fields)
             if (f.offset == o.offset)
                 f.meta = o.meta;
+
+    for (const auto& s : skips)
+        std::erase_if(t.fields, [&](const Field& f) { return f.offset == s.offset; });
 
     addComponentType<T>(name, t.meta, std::move(t.fields));
     return true;

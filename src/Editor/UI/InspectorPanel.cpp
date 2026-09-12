@@ -202,6 +202,16 @@ void InspectorPanel::drawTransform(EntityHandle ent, World& world)
                           }
                           ui::WrapDragMouse();
                       });
+
+            v3f scale = t->scale();
+            ui::Field("Scale",
+                      [&]
+                      {
+                          ImGui::SetNextItemWidth(-1.0f);
+                          if (ImGui::DragFloat3("##scale", scale.data(), 0.01f))
+                              ent.setLocalScale(scale);
+                          ui::WrapDragMouse();
+                      });
         }
 }
 
